@@ -1,93 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
-
-// Helper: get week number (1-5) based on day of month
-function getWeekNumber(dayOfMonth: number, daysInMonth: number): number {
-  if (dayOfMonth <= 7) return 1
-  if (dayOfMonth <= 14) return 2
-  if (dayOfMonth <= 21) return 3
-  if (dayOfMonth <= 28) return 4
-  return 5
-}
-
-// Helper: get week ranges for a month (W1=1-7, W2=8-14, W3=15-21, W4=22-28, W5=29-end)
-function getWeekRanges(year: number, month: number): Array<{ week: number; start: number; end: number; startStr: string; endNextDayStr: string }> {
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-  const fmt = (d: number) => `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-
-  const ranges: Array<{ week: number; start: number; end: number; startStr: string; endNextDayStr: string }> = [
-    { week: 1, start: 1, end: 7, startStr: fmt(1), endNextDayStr: fmt(8) },
-    { week: 2, start: 8, end: 14, startStr: fmt(8), endNextDayStr: fmt(15) },
-    { week: 3, start: 15, end: 21, startStr: fmt(15), endNextDayStr: fmt(22) },
-    { week: 4, start: 22, end: 28, startStr: fmt(22), endNextDayStr: fmt(29) },
-  ]
-  if (daysInMonth > 28) {
-    const nextMonthFirst = new Date(year, month + 1, 1)
-    ranges.push({
-      week: 5,
-      start: 29,
-      end: daysInMonth,
-      startStr: fmt(29),
-      endNextDayStr: `${nextMonthFirst.getFullYear()}-${String(nextMonthFirst.getMonth() + 1).padStart(2, '0')}-${String(nextMonthFirst.getDate()).padStart(2, '0')}`,
-    })
-  }
-  return ranges
-}
-
-// Helper: get WIB date
-function getWIBDate(): Date {
-  const now = new Date()
-  const utc = now.getTime() + now.getTimezoneOffset() * 60000
-  return new Date(utc + 7 * 3600000)
-}
-
-function formatDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
+import { requireAuth } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAuth()
+    if (!auth) return auth as NextResponse
     const { searchParams } = new URL(request.url)
     const period = searchParams.get('period') || 'today' // today, week, month
     const groupId = searchParams.get('groupId')
 
-    // Month filter: allow viewing past months (default = current month)
-    const filterMonth = searchParams.get('month')
-    const filterYear = searchParams.get('year')
-    const wibNow = getWIBDate()
-    const isCurrentMonth = !filterMonth && !filterYear
+    // Get current date in WIB (GMT+7) — correctly strip local offset first
+    const now = new Date()
+    const utc = now.getTime() + now.getTimezoneOffset() * 60000
+    const wibNow = new Date(utc + 7 * 3600000)
+    
+    const currentMonth = wibNow.getMonth()
+    const currentYear = wibNow.getFullYear()
+    const dayOfMonth = wibNow.getDate()
+    const todayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`
 
-    const targetYear = filterYear ? parseInt(filterYear) : wibNow.getFullYear()
-    const targetMonth = filterMonth ? parseInt(filterMonth) - 1 : wibNow.getMonth() // 0-indexed
-    const daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate()
-    const monthPrefix = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`
+    // Determine current week
+    let currentWeek = 1
+    if (dayOfMonth <= 7) currentWeek = 1
+    else if (dayOfMonth <= 14) currentWeek = 2
+    else if (dayOfMonth <= 21) currentWeek = 3
+    else currentWeek = 4
 
-    // For "today" and "week" calculations, use real WIB date only if viewing current month
-    let currentWeek: number
-    let weekStart: number
-    let weekEnd: number
-    let todayStr: string
-
-    if (isCurrentMonth) {
-      const dayOfMonth = wibNow.getDate()
-      todayStr = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`
-      currentWeek = getWeekNumber(dayOfMonth, daysInMonth)
-      const weekRanges = getWeekRanges(targetYear, targetMonth)
-      const currentWeekRange = weekRanges.find(r => r.week === currentWeek)
-      weekStart = currentWeekRange?.start ?? 1
-      weekEnd = currentWeekRange?.end ?? 7
-    } else {
-      // For past months, "today" = first day of month, "week" = week 1
-      todayStr = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-01`
-      currentWeek = 1
-      weekStart = 1
-      weekEnd = 7
-    }
-
-    const weekStartStr = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(weekStart).padStart(2, '0')}`
-    const weekEndNextDay = new Date(targetYear, targetMonth, weekEnd + 1)
-    const weekEndNextDayStr = formatDateStr(weekEndNextDay)
+    const weekStart = (currentWeek - 1) * 7 + 1
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
+    const weekEnd = currentWeek === 4 ? daysInMonth : Math.min(currentWeek * 7, daysInMonth)
+    const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`
 
     // Get all crews with their groups
     const crewWhere: Record<string, unknown> = {}
@@ -99,7 +43,14 @@ export async function GET(request: NextRequest) {
     })
     const crewIds = crews.map(c => c.id)
 
-    // Use groupBy aggregation
+    // Calculate week date range string for accurate weekly queries
+    const weekStartStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(weekStart).padStart(2, '0')}`
+    const weekEndStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(weekEnd).padStart(2, '0')}`
+    // BUGFIX: use next day after weekEnd for lt comparison (handles timestamps like "2026-05-03 09:00")
+    const weekEndNextDay = new Date(currentYear, currentMonth, weekEnd + 1)
+    const weekEndNextDayStr = `${weekEndNextDay.getFullYear()}-${String(weekEndNextDay.getMonth() + 1).padStart(2, '0')}-${String(weekEndNextDay.getDate()).padStart(2, '0')}`
+
+    // Use groupBy aggregation — MUCH lighter than loading all rows
     const [monthAgg, todayAgg, weekAgg, allTimeAgg] = crewIds.length > 0
       ? await Promise.all([
           db.sale.groupBy({
@@ -129,12 +80,16 @@ export async function GET(request: NextRequest) {
         ])
       : [[], [], [], []]
 
+    // Build crewId → aggregate lookup maps
     const monthMap = new Map(monthAgg.map(a => [a.crewId, a]))
     const todayMap = new Map(todayAgg.map(a => [a.crewId, a]))
     const weekMap = new Map(weekAgg.map(a => [a.crewId, a]))
     const allTimeMap = new Map(allTimeAgg.map(a => [a.crewId, a]))
 
-    // Struk counts per crew per period
+    // Struk counts per crew per period — using COUNT(DISTINCT idPenjualan)
+    // idPenjualan = transaction/receipt ID from POS system
+    // One struk can have multiple item rows sharing the same idPenjualan
+    // Quoted identifiers for PostgreSQL compatibility (also works in SQLite)
     const [todayStrukRaw, weekStrukRaw, monthStrukRaw, allTimeStrukRaw] = crewIds.length > 0
       ? await Promise.all([
           db.$queryRaw<Array<{ crewId: string; count: number }>>`
@@ -169,28 +124,53 @@ export async function GET(request: NextRequest) {
     const monthStrukMap = new Map(monthStrukRaw.map(r => [r.crewId, Number(r.count)]))
     const allTimeStrukMap = new Map(allTimeStrukRaw.map(r => [r.crewId, Number(r.count)]))
 
-    // Calculate per-week date ranges for all weeks (4 or 5)
-    const weekRanges = getWeekRanges(targetYear, targetMonth)
+    // Calculate per-week date ranges for all 4 weeks (needed for crewWeeklyDetails)
+    const weekRanges = [1, 2, 3, 4].map(w => {
+      const start = (w - 1) * 7 + 1
+      const end = w === 4 ? daysInMonth : Math.min(w * 7, daysInMonth)
+      const startStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(start).padStart(2, '0')}`
+      const endNextDay = new Date(currentYear, currentMonth, end + 1)
+      const endNextDayStr = `${endNextDay.getFullYear()}-${String(endNextDay.getMonth() + 1).padStart(2, '0')}-${String(endNextDay.getDate()).padStart(2, '0')}`
+      return { week: w, start, end, startStr, endNextDayStr }
+    })
 
-    // Query per-week aggregation for all weeks (dynamic based on how many weeks the month has)
-    const weekAggPromises = weekRanges.map(wr =>
-      db.sale.groupBy({
-        by: ['crewId'],
-        where: { crewId: { in: crewIds }, tanggal: { gte: wr.startStr, lt: wr.endNextDayStr } },
-        _sum: { settle: true },
-      })
-    )
-    const weekAggResults = crewIds.length > 0 ? await Promise.all(weekAggPromises) : weekRanges.map(() => [])
-    const weekAggMaps = weekAggResults.map(agg => new Map(agg.map(a => [a.crewId, a._sum.settle ?? 0])))
+    // Query per-week aggregation for ALL groups' crews (4 parallel queries)
+    const [week1Agg, week2Agg, week3Agg, week4Agg] = crewIds.length > 0
+      ? await Promise.all([
+          db.sale.groupBy({
+            by: ['crewId'],
+            where: { crewId: { in: crewIds }, tanggal: { gte: weekRanges[0].startStr, lt: weekRanges[0].endNextDayStr } },
+            _sum: { settle: true },
+          }),
+          db.sale.groupBy({
+            by: ['crewId'],
+            where: { crewId: { in: crewIds }, tanggal: { gte: weekRanges[1].startStr, lt: weekRanges[1].endNextDayStr } },
+            _sum: { settle: true },
+          }),
+          db.sale.groupBy({
+            by: ['crewId'],
+            where: { crewId: { in: crewIds }, tanggal: { gte: weekRanges[2].startStr, lt: weekRanges[2].endNextDayStr } },
+            _sum: { settle: true },
+          }),
+          db.sale.groupBy({
+            by: ['crewId'],
+            where: { crewId: { in: crewIds }, tanggal: { gte: weekRanges[3].startStr, lt: weekRanges[3].endNextDayStr } },
+            _sum: { settle: true },
+          }),
+        ])
+      : [[], [], [], []]
+    const weekAggMaps = [week1Agg, week2Agg, week3Agg, week4Agg].map(agg => new Map(agg.map(a => [a.crewId, a._sum.settle ?? 0])))
 
-    // Build group info map
+    // Calculate per-crew stats from aggregated data
+
+    // Build group info map from already-loaded crew.group data
     const groupInfoMap = new Map<string, { monthlyTarget: number; crewCount: number; weeklyTargetPcts: number[] }>()
     for (const crew of crews) {
       if (!groupInfoMap.has(crew.group.id)) {
         groupInfoMap.set(crew.group.id, {
           monthlyTarget: crew.group.monthlyTarget,
           crewCount: 0,
-          weeklyTargetPcts: [crew.group.week1Target, crew.group.week2Target, crew.group.week3Target, crew.group.week4Target, crew.group.week5Target ?? 0],
+          weeklyTargetPcts: [crew.group.week1Target, crew.group.week2Target, crew.group.week3Target, crew.group.week4Target],
         })
       }
       groupInfoMap.get(crew.group.id)!.crewCount++
@@ -211,16 +191,17 @@ export async function GET(request: NextRequest) {
       const allTimeTotal = aAgg?._sum.settle ?? 0
       const allTimeQty = aAgg?._sum.qty ?? 0
 
+      // Struk counts (unique transactions/receipts) per period
       const todayStruk = todayStrukMap.get(crew.id) ?? 0
       const weekStruk = weekStrukMap.get(crew.id) ?? 0
       const monthStruk = monthStrukMap.get(crew.id) ?? 0
       const allTimeStruk = allTimeStrukMap.get(crew.id) ?? 0
 
-      // Target per Crew calculation
+      // ── Target per Crew calculation ──
       const gInfo = groupInfoMap.get(crew.group.id)
       const crewCount = gInfo?.crewCount ?? 1
       const groupMonthlyTarget = gInfo?.monthlyTarget ?? 0
-      const weeklyPcts = gInfo?.weeklyTargetPcts ?? [0, 0, 0, 0, 0]
+      const weeklyPcts = gInfo?.weeklyTargetPcts ?? [0, 0, 0, 0]
 
       const crewMonthlyTarget = crewCount > 0 ? Math.round(groupMonthlyTarget / crewCount) : 0
       const crewWeeklyTargets = weeklyPcts.map(pct => Math.round((crewMonthlyTarget * pct) / 100))
@@ -228,7 +209,7 @@ export async function GET(request: NextRequest) {
       const crewMonthlyAchievement = crewMonthlyTarget > 0 ? Math.min(Math.round((monthTotal / crewMonthlyTarget) * 100), 999) : 0
       const crewWeeklyAchievement = crewCurrentWeekTarget > 0 ? Math.min(Math.round((weekTotal / crewCurrentWeekTarget) * 100), 999) : 0
 
-      // Per-week achievements for this crew
+      // Per-week achievements for this crew (all 4 weeks)
       const crewWeeklyDetails = weekRanges.map((wr, i) => {
         const weekTarget = crewWeeklyTargets[i]
         const weekTotalForCrew = weekAggMaps[i].get(crew.id) ?? 0
@@ -265,6 +246,7 @@ export async function GET(request: NextRequest) {
         allTimeQty,
         allTimeStruk,
         transactionCount: aAgg?._count ?? 0,
+        // Target fields
         crewMonthlyTarget,
         crewMonthlyAchievement,
         crewWeeklyTargets,
@@ -301,78 +283,79 @@ export async function GET(request: NextRequest) {
       monthQty: crewStats.reduce((s, c) => s + c.monthQty, 0),
     }
 
-    // Count claimed/unclaimed + imported data per period
+    // Count claimed/unclaimed across all sales + imported data per period (ALL sales, not just crew-assigned)
     const [claimedAgg, unclaimedAgg, allSalesAgg, importedTodayAgg, importedWeekAgg, importedMonthAgg] = await Promise.all([
       db.sale.count({ where: { crewId: { not: null } } }),
       db.sale.count({ where: { crewId: null } }),
       db.sale.aggregate({ _sum: { settle: true, qty: true } }),
+      // ALL imported sales today (including unclaimed)
       db.sale.aggregate({ _sum: { settle: true, qty: true }, where: { tanggal: { startsWith: todayStr } } }),
+      // ALL imported sales this week (including unclaimed)
       db.sale.aggregate({ _sum: { settle: true, qty: true }, where: { tanggal: { gte: weekStartStr, lt: weekEndNextDayStr } } }),
+      // ALL imported sales this month (including unclaimed)
       db.sale.aggregate({ _sum: { settle: true, qty: true }, where: { tanggal: { startsWith: monthPrefix } } }),
     ])
 
-    // --- Trends (only for current month) ---
+    // --- Trends: compare current period totals with previous period ---
+    const formatDateStr = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+    // Previous period date calculations (all in WIB)
+    const yesterdayDate = new Date(wibNow)
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1)
+    const yesterdayStr = formatDateStr(yesterdayDate)
+
+    // Last week: previous 7-day window ending yesterday
+    const lastWeekStart = new Date(yesterdayDate)
+    lastWeekStart.setDate(lastWeekStart.getDate() - 6)
+    const lastWeekStartStr = formatDateStr(lastWeekStart)
+    const lastWeekEndStr = yesterdayStr
+    // BUGFIX: use next day after lastWeekEnd for lt comparison
+    const lastWeekEndNextDay = new Date(yesterdayDate)
+    lastWeekEndNextDay.setDate(lastWeekEndNextDay.getDate() + 1)
+    const lastWeekEndNextDayStr = formatDateStr(lastWeekEndNextDay)
+
+    // Last month: first day of previous month used as prefix
+    const lastMonthDate = new Date(wibNow.getFullYear(), wibNow.getMonth() - 1, 1)
+    const lastMonthStr = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`
+
+    // Base where clause for groupId filter on sales
     const saleGroupFilter = groupId ? { crew: { groupId } } : {}
-    const [yesterdayAgg, lastWeekAgg, lastMonthAgg, lastWeekTotalsAgg, recentSales, groups] = isCurrentMonth
-      ? await Promise.all([
-          // Yesterday
-          (() => {
-            const yesterdayDate = new Date(wibNow)
-            yesterdayDate.setDate(yesterdayDate.getDate() - 1)
-            const yesterdayStr = formatDateStr(yesterdayDate)
-            return db.sale.aggregate({ _sum: { settle: true }, where: { ...saleGroupFilter, tanggal: { startsWith: yesterdayStr } } })
-          })(),
-          // Last week (previous 7-day window)
-          (() => {
-            const yesterdayDate = new Date(wibNow)
-            yesterdayDate.setDate(yesterdayDate.getDate() - 1)
-            const lastWeekStart = new Date(yesterdayDate)
-            lastWeekStart.setDate(lastWeekStart.getDate() - 6)
-            const lastWeekEndNextDay = new Date(yesterdayDate)
-            lastWeekEndNextDay.setDate(lastWeekEndNextDay.getDate() + 1)
-            return db.sale.aggregate({ _sum: { settle: true }, where: { ...saleGroupFilter, tanggal: { gte: formatDateStr(lastWeekStart), lt: formatDateStr(lastWeekEndNextDay) } } })
-          })(),
-          // Last month
-          (() => {
-            const lastMonthDate = new Date(wibNow.getFullYear(), wibNow.getMonth() - 1, 1)
-            const lastMonthStr = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`
-            return db.sale.aggregate({ _sum: { settle: true }, where: { ...saleGroupFilter, tanggal: { startsWith: lastMonthStr } } })
-          })(),
-          // Last week totals for comparison
-          (() => {
-            const yesterdayDate = new Date(wibNow)
-            yesterdayDate.setDate(yesterdayDate.getDate() - 1)
-            const lastWeekStart = new Date(yesterdayDate)
-            lastWeekStart.setDate(lastWeekStart.getDate() - 6)
-            const lastWeekEndNextDay = new Date(yesterdayDate)
-            lastWeekEndNextDay.setDate(lastWeekEndNextDay.getDate() + 1)
-            return db.sale.aggregate({ _sum: { settle: true, qty: true }, _count: true, where: { ...saleGroupFilter, tanggal: { gte: formatDateStr(lastWeekStart), lt: formatDateStr(lastWeekEndNextDay) } } })
-          })(),
-          // Recent sales
-          db.sale.findMany({
-            take: 10,
-            where: { crewId: { not: null } },
-            include: { crew: { select: { name: true, photo: true, group: { select: { name: true } } } } },
-            orderBy: { createdAt: 'desc' },
-          }),
-          // Groups
-          db.group.findMany({ include: { crews: { select: { id: true } } } }),
-        ])
-      : await Promise.all([
-          // For past months: no trends
-          { _sum: { settle: null } } as any,
-          { _sum: { settle: null } } as any,
-          { _sum: { settle: null } } as any,
-          { _sum: { settle: 0, qty: 0 }, _count: 0 } as any,
-          // Recent sales for the month
-          db.sale.findMany({
-            take: 10,
-            where: { tanggal: { startsWith: monthPrefix }, crewId: { not: null } },
-            include: { crew: { select: { name: true, photo: true, group: { select: { name: true } } } } },
-            orderBy: { createdAt: 'desc' },
-          }),
-          db.group.findMany({ include: { crews: { select: { id: true } } } }),
-        ])
+
+    // PERF: Merge groups + recentSales + trend queries into single parallel batch (was 2 sequential rounds, now 1)
+    const [groups, recentSales, yesterdayAgg, lastWeekAgg, lastMonthAgg, lastWeekTotalsAgg] = await Promise.all([
+      db.group.findMany({
+        include: { crews: { select: { id: true } } },
+      }),
+      db.sale.findMany({
+        take: 10,
+        where: { crewId: { not: null } },
+        include: {
+          crew: {
+            select: { name: true, photo: true, group: { select: { name: true } } },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      db.sale.aggregate({
+        _sum: { settle: true },
+        where: { ...saleGroupFilter, tanggal: { startsWith: yesterdayStr } },
+      }),
+      db.sale.aggregate({
+        _sum: { settle: true },
+        where: { ...saleGroupFilter, tanggal: { gte: lastWeekStartStr, lt: lastWeekEndNextDayStr } },
+      }),
+      db.sale.aggregate({
+        _sum: { settle: true },
+        where: { ...saleGroupFilter, tanggal: { startsWith: lastMonthStr } },
+      }),
+      // Last week totals for comparison view (settle, qty, transactions)
+      db.sale.aggregate({
+        _sum: { settle: true, qty: true },
+        _count: true,
+        where: { ...saleGroupFilter, tanggal: { gte: lastWeekStartStr, lt: lastWeekEndNextDayStr } },
+      }),
+    ])
 
     const calcTrend = (current: number, previous: number | null) => {
       const prev = previous ?? 0
@@ -388,32 +371,41 @@ export async function GET(request: NextRequest) {
     }
 
     const trends = {
+      // Compare like-for-like: imported data (ALL sales) vs previous period's ALL sales
       today: calcTrend(importedTodayAgg._sum.settle ?? 0, yesterdayAgg._sum.settle),
       week: calcTrend(importedWeekAgg._sum.settle ?? 0, lastWeekAgg._sum.settle),
       month: calcTrend(importedMonthAgg._sum.settle ?? 0, lastMonthAgg._sum.settle),
     }
 
-    // Group/Zoning achievements
+    // Group/Zoning achievements — use actual weekly data from weekMap
     const groupAchievements = groups.map(group => {
       const groupMonthTotal = group.crews.reduce((sum, c) => sum + (monthMap.get(c.id)?._sum.settle ?? 0), 0)
       const weeklyTotal = group.crews.reduce((sum, c) => sum + (weekMap.get(c.id)?._sum.settle ?? 0), 0)
+      
+      let weekTargetPct: number
+      switch (currentWeek) {
+        case 1: weekTargetPct = group.week1Target; break
+        case 2: weekTargetPct = group.week2Target; break
+        case 3: weekTargetPct = group.week3Target; break
+        case 4: weekTargetPct = group.week4Target; break
+        default: weekTargetPct = 0
+      }
 
-      const weeklyTargetPcts = [group.week1Target, group.week2Target, group.week3Target, group.week4Target, group.week5Target ?? 0]
-      let weekTargetPct = weeklyTargetPcts[currentWeek - 1] ?? 0
-
-      const monthlyAchievement = group.monthlyTarget > 0
-        ? Math.min((groupMonthTotal / group.monthlyTarget) * 100, 100)
+      const monthlyAchievement = group.monthlyTarget > 0 
+        ? Math.min((groupMonthTotal / group.monthlyTarget) * 100, 100) 
         : 0
       const weeklyTarget = group.monthlyTarget * (weekTargetPct / 100)
-      const weeklyAchievement = weeklyTarget > 0
-        ? Math.min((weeklyTotal / weeklyTarget) * 100, 100)
+      const weeklyAchievement = weeklyTarget > 0 
+        ? Math.min((weeklyTotal / weeklyTarget) * 100, 100) 
         : 0
 
+      // Per-crew target breakdown
       const crewCount = group.crews.length
       const crewMonthlyTarget = crewCount > 0 ? Math.round(group.monthlyTarget / crewCount) : 0
+      const weeklyTargetPcts = [group.week1Target, group.week2Target, group.week3Target, group.week4Target]
       const crewWeeklyTargets = weeklyTargetPcts.map(pct => Math.round((crewMonthlyTarget * pct) / 100))
 
-      // Per-week achievements
+      // Per-week achievements (all 4 weeks)
       const weeklyDetails = weekRanges.map((wr, i) => {
         const targetPct = weeklyTargetPcts[i]
         const weekTarget = group.monthlyTarget * (targetPct / 100)
@@ -450,18 +442,21 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Top 3 crews for leaderboard
     const topCrews = sortedCrews.slice(0, 3)
 
     return NextResponse.json({
       crewStats: sortedCrews,
       totals: {
         ...totals,
+        // Claimed-only period totals (from crewStats — sales assigned to crews)
         today: crewStats.reduce((s, c) => s + c.todayTotal, 0),
         week: crewStats.reduce((s, c) => s + c.weekTotal, 0),
         month: crewStats.reduce((s, c) => s + c.monthTotal, 0),
         todayQty: crewStats.reduce((s, c) => s + c.todayQty, 0),
         weekQty: crewStats.reduce((s, c) => s + c.weekQty, 0),
         monthQty: crewStats.reduce((s, c) => s + c.monthQty, 0),
+        // ALL imported data totals (from Excel imports, including unclaimed)
         totalTransactions: claimedAgg + unclaimedAgg,
         totalSettle: allSalesAgg._sum.settle ?? 0,
         totalQty: allSalesAgg._sum.qty ?? 0,
@@ -476,24 +471,24 @@ export async function GET(request: NextRequest) {
       groupAchievements,
       topCrews,
       recentSales,
-      lastWeekTotals: isCurrentMonth
-        ? { settle: lastWeekTotalsAgg._sum.settle ?? 0, qty: lastWeekTotalsAgg._sum.qty ?? 0, transactions: lastWeekTotalsAgg._count ?? 0 }
-        : null,
+      lastWeekTotals: {
+        settle: lastWeekTotalsAgg._sum.settle ?? 0,
+        qty: lastWeekTotalsAgg._sum.qty ?? 0,
+        transactions: lastWeekTotalsAgg._count ?? 0,
+      },
       dateInfo: {
         today: todayStr,
         currentWeek,
         weekStart,
         weekEnd,
-        currentMonth: targetMonth,
-        currentYear: targetYear,
-        isCurrentMonth,
+        currentMonth,
+        currentYear,
       },
       claimedCount: claimedAgg,
       unclaimedCount: unclaimedAgg,
     })
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error)
-    console.error('Dashboard error:', msg)
-    return NextResponse.json({ error: 'Terjadi kesalahan', detail: msg }, { status: 500 })
+  } catch (error) {
+    console.error('Dashboard error:', error)
+    return NextResponse.json({ error: 'Terjadi kesalahan' }, { status: 500 })
   }
 }
