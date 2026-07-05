@@ -5,8 +5,6 @@ import { logActivity } from '@/lib/activity-logger'
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth()
-    if (!auth) return unauthorized()
     const { searchParams } = new URL(request.url)
     const groupId = searchParams.get('groupId')
     const search = searchParams.get('search')

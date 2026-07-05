@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth, unauthorized } from '@/lib/auth'
 import { logActivity } from '@/lib/activity-logger'
 
 // ─────────────────────────────────────────────
@@ -8,9 +7,6 @@ import { logActivity } from '@/lib/activity-logger'
 // ─────────────────────────────────────────────
 export async function PUT(request: NextRequest) {
   try {
-    const auth = await requireAuth()
-    if (!auth) return unauthorized()
-
     const body = await request.json()
     const { saleIds } = body as { saleIds?: string[] }
 

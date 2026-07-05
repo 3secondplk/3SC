@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import * as XLSX from 'xlsx'
-import { requireAuth, unauthorized } from '@/lib/auth'
 import { logActivity } from '@/lib/activity-logger'
 
 // ─────────────────────────────────────────────
@@ -381,8 +380,6 @@ export async function GET(request: NextRequest) {
 // ─────────────────────────────────────────────
 export async function PUT(request: NextRequest) {
   try {
-    const auth = await requireAuth()
-    if (!auth) return unauthorized()
     const body = await request.json()
     const { saleIds, crewId } = body as { saleIds?: string[]; crewId?: string }
 
@@ -536,8 +533,6 @@ export async function PUT(request: NextRequest) {
 // ─────────────────────────────────────────────
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await requireAuth()
-    if (!auth) return unauthorized()
     const body = await request.json()
     const { id, crewId, tanggal, kodeExtend, qty, settle, dept, brand, modul, pembayaran, program } = body as Record<string, unknown>
 
@@ -607,8 +602,6 @@ export async function PATCH(request: NextRequest) {
 // ─────────────────────────────────────────────
 export async function DELETE(request: NextRequest) {
   try {
-    const auth = await requireAuth()
-    if (!auth) return unauthorized()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 

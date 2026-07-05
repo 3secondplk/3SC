@@ -31,28 +31,12 @@ const weekDateRanges = [
   '29–31',
 ]
 
-const weekBlockColors = [
-  'border-[#E14227]/40 bg-[#F0D5C5]/80 dark:border-[#B8321E] dark:bg-[#1A1A1B]/30',
-  'border-[#E6BAA3] bg-[#F0D5C5]/80 dark:border-[#E6BAA3] dark:bg-[#1A1A1B]/30',
-  'border-[#9DB1CC] bg-[#B5C7DB]/80 dark:border-[#9DB1CC] dark:bg-[#1A1A1B]/30',
-  'border-[#D4956B] bg-[#F0D5C5]/80 dark:border-[#D4956B] dark:bg-[#1A1A1B]/30',
-  'border-[#B87333] bg-[#D4956B]/80 dark:border-[#B87333] dark:bg-[#1A1A1B]/30',
-]
-
-const weekActiveRingColors = [
-  'ring-[#E14227] shadow-[#E14227]/20 dark:ring-[#F07050] dark:shadow-[#B8321E]/40',
-  'ring-[#E6BAA3] shadow-[#E6BAA3]/20 dark:ring-[#E6BAA3] dark:shadow-[#E6BAA3]/40',
-  'ring-[#9DB1CC] shadow-[#9DB1CC]/20 dark:ring-[#9DB1CC] dark:shadow-[#9DB1CC]/40',
-  'ring-[#D4956B] shadow-[#D4956B]/20 dark:ring-[#D4956B] dark:shadow-[#D4956B]/40',
-  'ring-[#B87333] shadow-[#B87333]/20 dark:ring-[#B87333] dark:shadow-[#B87333]/40',
-]
-
-const weekIcons = [
-  'text-[#B8321E]',
-  'text-[#C49060]',
-  'text-[#7E95B3]',
-  'text-[#B87D4F]',
-  'text-[#B87333]',
+const weekAccentColors = [
+  { bg: 'bg-[#E14227]/8 dark:bg-[#E14227]/15', border: 'border-[#E14227]/30 dark:border-[#E14227]/50', ring: 'ring-[#E14227]/60', text: 'text-[#E14227] dark:text-[#F07050]', badge: 'bg-[#E14227]/10 text-[#E14227] dark:text-[#F07050]' },
+  { bg: 'bg-[#C49060]/8 dark:bg-[#C49060]/15', border: 'border-[#C49060]/30 dark:border-[#C49060]/50', ring: 'ring-[#C49060]/60', text: 'text-[#C49060] dark:text-[#E6BAA3]', badge: 'bg-[#C49060]/10 text-[#C49060] dark:text-[#E6BAA3]' },
+  { bg: 'bg-[#7E95B3]/8 dark:bg-[#7E95B3]/15', border: 'border-[#7E95B3]/30 dark:border-[#7E95B3]/50', ring: 'ring-[#7E95B3]/60', text: 'text-[#7E95B3] dark:text-[#9DB1CC]', badge: 'bg-[#7E95B3]/10 text-[#7E95B3] dark:text-[#9DB1CC]' },
+  { bg: 'bg-[#D4956B]/8 dark:bg-[#D4956B]/15', border: 'border-[#D4956B]/30 dark:border-[#D4956B]/50', ring: 'ring-[#D4956B]/60', text: 'text-[#D4956B] dark:text-[#D4956B]', badge: 'bg-[#D4956B]/10 text-[#D4956B]' },
+  { bg: 'bg-[#B87333]/8 dark:bg-[#B87333]/15', border: 'border-[#B87333]/30 dark:border-[#B87333]/50', ring: 'ring-[#B87333]/60', text: 'text-[#B87333] dark:text-[#B87333]', badge: 'bg-[#B87333]/10 text-[#B87333]' },
 ]
 
 export default function GroupForm({ group, onSave, onCancel }: {
@@ -186,7 +170,7 @@ export default function GroupForm({ group, onSave, onCancel }: {
 
         <Separator />
 
-        {/* Weekly Targets */}
+        {/* Weekly Targets — Redesigned compact layout */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <CalendarDays className="w-4 h-4 text-[#E14227]" />
@@ -194,42 +178,52 @@ export default function GroupForm({ group, onSave, onCancel }: {
             <span className="text-[10px] text-muted-foreground ml-auto">W1–W4 = 7 hari, W5 = sisa hari</span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          {/* Desktop: 5-column row — Mobile: 2-column grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {weekKeys.map((key, i) => {
               const isCurrentWeek = i + 1 === currentWeek
               const val = Number(form[key]) || 0
               const allocation = weekAllocations[i]
+              const colors = weekAccentColors[i]
 
               return (
                 <div
                   key={key}
-                  className={`relative rounded-xl border-2 p-2.5 text-center transition-all ${
-                    weekBlockColors[i]
-                  } ${
+                  className={`relative rounded-xl border p-2.5 transition-all ${colors.bg} ${colors.border} ${
                     isCurrentWeek
-                      ? `${weekActiveRingColors[i]} ring-2 shadow-lg scale-[1.02]`
-                      : ''
+                      ? `ring-2 ${colors.ring} shadow-md`
+                      : 'shadow-sm'
                   }`}
                 >
-
-                  <div className="flex items-center justify-center gap-1 mb-1.5">
-                    <span className={`text-[10px] font-bold ${weekIcons[i]}`}>{weekLabels[i]}</span>
+                  {/* Header: Week label + date range */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs font-bold ${colors.text}`}>{weekLabels[i]}</span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums">{weekDateRanges[i]}</span>
                   </div>
-                  <p className="text-[8px] text-muted-foreground mb-1.5">
-                    {weekDateRanges[i]}
-                  </p>
-                  <Input
-                    type="number"
-                    value={form[key]}
-                    onChange={e => setForm({ ...form, [key]: e.target.value })}
-                    className={`text-center h-9 text-sm font-semibold bg-white/80 dark:bg-[#1A1A1B]/80 border-white/60 dark:border-[#1A1A1B]/60 ${
-                      val < 0 ? 'border-destructive' : ''
-                    }`}
-                  />
+
+                  {/* Input */}
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      value={form[key]}
+                      onChange={e => setForm({ ...form, [key]: e.target.value })}
+                      className="text-center h-8 text-sm font-semibold bg-white/70 dark:bg-black/30 border-white/80 dark:border-white/10 tabular-nums"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">%</span>
+                  </div>
+
+                  {/* Allocation preview */}
                   {allocation > 0 && (
-                    <p className="text-[9px] text-muted-foreground mt-1.5 font-mono tabular-nums">
+                    <p className={`text-[10px] mt-1.5 font-mono tabular-nums text-center ${colors.text} opacity-80`}>
                       {fmtRp(allocation)}
                     </p>
+                  )}
+
+                  {/* Current week indicator */}
+                  {isCurrentWeek && (
+                    <div className={`absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full ${colors.badge} flex items-center justify-center`}>
+                      <span className="text-[7px] font-bold">●</span>
+                    </div>
                   )}
                 </div>
               )
@@ -260,28 +254,53 @@ export default function GroupForm({ group, onSave, onCancel }: {
           </div>
         </div>
 
-        {/* Target Summary */}
+        {/* Target Summary — Compact table style */}
         {form.name && monthlyTargetNum > 0 && totalPct > 0 && (
-          <div className="rounded-xl border bg-gradient-to-br from-[#F0D5C5]/80 to-[#B5C7DB]/50 dark:from-[#1A1A1B]/20 dark:to-[#1A1A1B]/10 p-3 space-y-2">
+          <div className="rounded-xl border bg-gradient-to-br from-[#F0D5C5]/80 to-[#B5C7DB]/50 dark:from-[#1A1A1B]/20 dark:to-[#1A1A1B]/10 p-3 space-y-2.5">
             <p className="text-xs font-semibold text-[#B8321E] dark:text-[#E6BAA3] flex items-center gap-1.5">
               <Target className="w-3.5 h-3.5" />
               Ringkasan Target
             </p>
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Group</span>
-                <span className="font-medium">{form.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Bulanan</span>
-                <span className="font-semibold gradient-text tabular-nums">{fmtRp(monthlyTargetNum)}</span>
-              </div>
-              {weekKeys.map((key, i) => (
-                <div key={key} className="flex justify-between">
-                  <span className="text-muted-foreground">{weekLabels[i]} <span className="text-[9px] opacity-60">({weekDateRanges[i]})</span></span>
-                  <span className="font-medium tabular-nums">{fmtRp(weekAllocations[i])}</span>
-                </div>
-              ))}
+
+            {/* Header row */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-3 gap-y-1.5 text-[11px]">
+              <span className="font-medium text-muted-foreground">Item</span>
+              <span className="font-medium text-muted-foreground text-right">%</span>
+              <span className="font-medium text-muted-foreground text-right hidden sm:block">Jumlah</span>
+              {/* Desktop only headers */}
+              <span className="hidden sm:block font-medium text-muted-foreground">Item</span>
+              <span className="hidden sm:block font-medium text-muted-foreground text-right">%</span>
+              <span className="hidden sm:block font-medium text-muted-foreground text-right">Jumlah</span>
+            </div>
+
+            {/* Month row */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-3 gap-y-1.5 text-[11px]">
+              <span className="text-foreground font-medium">Bulanan</span>
+              <span className="text-right tabular-nums font-semibold gradient-text">100%</span>
+              <span className="text-right tabular-nums font-semibold gradient-text hidden sm:block">{fmtRp(monthlyTargetNum)}</span>
+            </div>
+
+            {/* Week rows — 2 columns on mobile, 5+1 on desktop */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
+              {weekKeys.map((key, i) => {
+                const colors = weekAccentColors[i]
+                return (
+                  <div key={key} className="flex items-center justify-between py-0.5">
+                    <span className="text-muted-foreground">
+                      {weekLabels[i]}
+                      <span className="text-[9px] opacity-60 ml-1">({weekDateRanges[i]})</span>
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className={`tabular-nums font-medium w-10 text-right ${colors.text}`}>
+                        {Number(form[key]) || 0}%
+                      </span>
+                      <span className="tabular-nums font-medium w-24 text-right">
+                        {fmtRp(weekAllocations[i])}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
