@@ -11,12 +11,12 @@ export interface CrewStat {
   // Target info derived from group (monthlyTarget / crewCount)
   crewMonthlyTarget: number
   crewMonthlyAchievement: number // percentage
-  crewWeeklyTargets: number[] // [W1, W2, W3, W4] target amounts
+  crewWeeklyTargets: number[] // [W1, W2, W3, W4, W5] target amounts
   crewCurrentWeekTarget: number // this week's target amount
   crewWeeklyAchievement: number // percentage vs current week target
-  // Per-week achievements for this crew (all 4 weeks)
+  // Per-week achievements for this crew (all 5 weeks)
   crewWeeklyDetails: Array<{
-    week: number // 1-4
+    week: number // 1-5
     targetPct: number // e.g. 25 means 25%
     target: number // target Rp for this crew this week
     total: number // actual sales Rp for this crew this week
@@ -27,7 +27,7 @@ export interface CrewStat {
   currentWeek: number
   // Group raw targets for reference
   groupMonthlyTarget: number
-  groupWeeklyTargetPcts: number[] // [W1%, W2%, W3%, W4%]
+  groupWeeklyTargetPcts: number[] // [W1%, W2%, W3%, W4%, W5%]
 }
 
 export interface GroupAchievement {
@@ -37,11 +37,11 @@ export interface GroupAchievement {
   weekTargetPct: number; currentWeek: number; crewCount: number
   // Per-crew target breakdown
   crewMonthlyTarget: number // monthlyTarget / crewCount
-  weeklyTargetPcts: number[] // [W1%, W2%, W3%, W4%]
-  crewWeeklyTargets: number[] // [W1, W2, W3, W4] per-crew amounts
-  // Per-week achievements (all 4 weeks)
+  weeklyTargetPcts: number[] // [W1%, W2%, W3%, W4%, W5%]
+  crewWeeklyTargets: number[] // [W1, W2, W3, W4, W5] per-crew amounts
+  // Per-week achievements (all 5 weeks)
   weeklyDetails: Array<{
-    week: number // 1-4
+    week: number // 1-5
     targetPct: number // e.g. 25 means 25%
     target: number // actual Rp target for this group
     total: number // actual sales Rp for this week
@@ -84,7 +84,7 @@ export interface Crew {
 
 export interface Group {
   id: string; name: string; logo: string | null; monthlyTarget: number
-  week1Target: number; week2Target: number; week3Target: number; week4Target: number
+  week1Target: number; week2Target: number; week3Target: number; week4Target: number; week5Target: number
   crewCount: number; crews: Crew[]
 }
 
@@ -105,7 +105,7 @@ export interface GroupDetailCrew {
   crewCurrentWeekTarget: number
   crewMonthlyAchievement: number
   crewWeeklyAchievement: number
-  // Per-week achievements (all 4 weeks)
+  // Per-week achievements (all 5 weeks)
   crewWeeklyDetails: Array<{
     week: number
     targetPct: number
@@ -124,8 +124,8 @@ export interface GroupDetailData {
   groupTotal: { qty: number; settle: number; struk: number; basketSize: number; pricePoint: number }
   // Target info
   crewMonthlyTarget: number // monthlyTarget / crewCount
-  weeklyTargetPcts: number[] // [W1%, W2%, W3%, W4%]
-  crewWeeklyTargets: number[] // [W1, W2, W3, W4] per-crew amounts
+  weeklyTargetPcts: number[] // [W1%, W2%, W3%, W4%, W5%]
+  crewWeeklyTargets: number[] // [W1, W2, W3, W4, W5] per-crew amounts
   currentWeek: number
 }
 

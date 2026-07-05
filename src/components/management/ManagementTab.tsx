@@ -164,7 +164,7 @@ interface ManagementTabProps {
   filteredGroups: Group[]
   handleSaveCrew: (data: { name: string; photo: string; employeeId: string; groupId: string; removePhoto?: boolean }) => void
   handleDeleteCrew: (id: string) => void
-  handleSaveGroup: (data: { name: string; logo: string; monthlyTarget: number; week1Target: number; week2Target: number; week3Target: number; week4Target: number }) => void
+  handleSaveGroup: (data: { name: string; logo: string; monthlyTarget: number; week1Target: number; week2Target: number; week3Target: number; week4Target: number; week5Target: number }) => void
   handleDeleteGroup: (id: string) => void
   setDeleteConfirm: (v: { type: 'crew' | 'group' | 'sale' | 'batch-sale'; ids?: string[]; id?: string; name: string } | null) => void
   onImportSuccess?: () => void
@@ -713,7 +713,7 @@ const ManagementTab = React.memo(function ManagementTab({
                     <DialogTrigger asChild>
                       <Button size="sm" className="bg-[#E14227] hover:bg-[#B8321E] text-white shadow-md shadow-[#E14227]/20 transition-all"><Plus className="w-4 h-4 mr-1" />Tambah Group</Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-lg">
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                       <GroupForm onSave={handleSaveGroup} onCancel={() => setShowAddGroup(false)} />
                     </DialogContent>
                   </Dialog>
@@ -728,6 +728,7 @@ const ManagementTab = React.memo(function ManagementTab({
                         { w: 2, t: group.week2Target },
                         { w: 3, t: group.week3Target },
                         { w: 4, t: group.week4Target },
+                        { w: 5, t: group.week5Target ?? 0 },
                       ]
                       const currentWeekTarget = weekTargets[currentWeek - 1]?.t || 0
 
@@ -851,7 +852,7 @@ const ManagementTab = React.memo(function ManagementTab({
 
                 {/* Edit Group Dialog */}
                 <Dialog open={showAddGroup && !!editGroup} onOpenChange={open => { if (!open) { setEditGroup(null); setShowAddGroup(false) } }}>
-                  <DialogContent className="max-w-lg">
+                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     {editGroup && (
                       <GroupForm group={editGroup} onSave={handleSaveGroup} onCancel={() => { setEditGroup(null); setShowAddGroup(false) }} />
                     )}

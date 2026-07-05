@@ -211,7 +211,8 @@ async function main() {
       week1Target: 20,
       week2Target: 25,
       week3Target: 25,
-      week4Target: 30,
+      week4Target: 20,
+      week5Target: 10,
     },
   })
 
@@ -226,7 +227,8 @@ async function main() {
       week1Target: 20,
       week2Target: 25,
       week3Target: 25,
-      week4Target: 30,
+      week4Target: 20,
+      week5Target: 10,
     },
   })
 
@@ -241,7 +243,8 @@ async function main() {
       week1Target: 22,
       week2Target: 24,
       week3Target: 26,
-      week4Target: 28,
+      week4Target: 18,
+      week5Target: 10,
     },
   })
 

@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────
-// CMS Crew Management System — Prisma Schema (SQLite)
-// Developer: Ahtjong Labs
+// CMS Crew Management System — Prisma Schema (PostgreSQL)
+// Deploy ke Vercel dengan Neon / Supabase / Railway DB
 // ─────────────────────────────────────────────────────────
 
 generator client {
@@ -30,6 +30,7 @@ model Group {
   week2Target    Float   @default(0)
   week3Target    Float   @default(0)
   week4Target    Float   @default(0)
+  week5Target    Float   @default(0)
   crews          Crew[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -44,13 +45,13 @@ model Crew {
   group      Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   sales      Sale[]
   createdAt  DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt  DateTime @updatedAt
 }
 
 model Sale {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   crewId           String?
-  crew             Crew?    @relation(fields: [crewId], references: [id], onDelete: SetNull)
+  crew             Crew?     @relation(fields: [crewId], references: [id], onDelete: SetNull)
   tanggal          String
   idPenjualan      String?
   statusRetention  String?
@@ -60,19 +61,26 @@ model Sale {
   dept             String?
   modul            String?
   ukuran           String?
-  qty              Int      @default(0)
-  hjp              Float    @default(0)
-  netto            Float    @default(0)
-  diskon           Float    @default(0)
-  diskonRp         Float    @default(0)
-  potongan         Float    @default(0)
-  potonganV        Float    @default(0)
-  settle           Float    @default(0)
+  qty              Int       @default(0)
+  hjp              Float     @default(0)
+  netto            Float     @default(0)
+  diskon           Float     @default(0)
+  diskonRp         Float     @default(0)
+  potongan         Float     @default(0)
+  potonganV        Float     @default(0)
+  settle           Float     @default(0)
   pembayaran       String?
   program          String?
   channelStock     String?
   claimedAt        DateTime?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
+
+  @@index([tanggal])
+  @@index([kodeExtend])
+  @@index([crewId])
+  @@index([program])
+  @@index([tanggal, kodeExtend])
+  @@index([idPenjualan])
 }
 
 model ActivityLog {

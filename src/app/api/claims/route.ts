@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import * as XLSX from 'xlsx'
-import { requireAuth } from '@/lib/auth'
+import { requireAuth, unauthorized } from '@/lib/auth'
 import { logActivity } from '@/lib/activity-logger'
 
 // ─────────────────────────────────────────────
@@ -9,8 +9,6 @@ import { logActivity } from '@/lib/activity-logger'
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAuth()
-    if (!auth) return auth as NextResponse
     const formData = await request.formData()
     const file = formData.get('file') as File | null
 
@@ -260,8 +258,6 @@ export async function POST(request: NextRequest) {
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth()
-    if (!auth) return auth as NextResponse
     const { searchParams } = new URL(request.url)
 
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
@@ -386,7 +382,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const auth = await requireAuth()
-    if (!auth) return auth as NextResponse
+    if (!auth) return unauthorized()
     const body = await request.json()
     const { saleIds, crewId } = body as { saleIds?: string[]; crewId?: string }
 
@@ -541,7 +537,7 @@ export async function PUT(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const auth = await requireAuth()
-    if (!auth) return auth as NextResponse
+    if (!auth) return unauthorized()
     const body = await request.json()
     const { id, crewId, tanggal, kodeExtend, qty, settle, dept, brand, modul, pembayaran, program } = body as Record<string, unknown>
 
@@ -612,7 +608,7 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const auth = await requireAuth()
-    if (!auth) return auth as NextResponse
+    if (!auth) return unauthorized()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 

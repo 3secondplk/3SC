@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth'
 
 // ─────────────────────────────────────────────
 // GET /api/claims/programs — List unique program values
 // ─────────────────────────────────────────────
 export async function GET() {
   try {
-    const auth = await requireAuth()
-    if (!auth) return auth as NextResponse
     const programs = await db.sale.findMany({
       where: {
         program: { not: null },

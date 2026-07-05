@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth'
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/claims/search — Case-insensitive search for SQLite
@@ -60,8 +59,6 @@ async function fetchSearchResults(where: Record<string, any>, page: number, limi
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth()
-    if (!auth) return auth as NextResponse
     const { searchParams } = new URL(request.url)
 
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))

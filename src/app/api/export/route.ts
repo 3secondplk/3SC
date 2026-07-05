@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth'
+import { requireAuth, unauthorized } from '@/lib/auth'
 
 /** Format a number as Rp currency string */
 function fmtRpServer(n: number): string {
@@ -10,7 +10,7 @@ function fmtRpServer(n: number): string {
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth()
-    if (!auth) return auth as NextResponse
+    if (!auth) return unauthorized()
     const { searchParams } = new URL(request.url)
     const format = searchParams.get('format')
     const crewId = searchParams.get('crewId')

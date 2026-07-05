@@ -30,7 +30,6 @@ function verifyJWT(token: string): JWTPayload | null {
 /**
  * Authenticate the current request via admin_token cookie.
  * Returns the JWT payload if valid, or null if unauthenticated.
- * Intended to be called at the top of every protected API handler.
  */
 export async function getAuthenticatedUser(): Promise<JWTPayload | null> {
   try {
@@ -44,15 +43,16 @@ export async function getAuthenticatedUser(): Promise<JWTPayload | null> {
 }
 
 /**
- * Require authentication — returns payload or a 401 NextResponse.
+ * Require authentication — returns payload or null.
  * Usage:
  *   const user = await requireAuth()
- *   if (!user) return  // NextResponse already sent
+ *   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
  */
-export async function requireAuth(): Promise<JWTPayload | NextResponse> {
-  const payload = await getAuthenticatedUser()
-  if (!payload) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-  return payload
+export async function requireAuth(): Promise<JWTPayload | null> {
+  return getAuthenticatedUser()
+}
+
+/** Helper: return a 401 response */
+export function unauthorized() {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 }

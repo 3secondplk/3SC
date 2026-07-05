@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireAuth, unauthorized } from '@/lib/auth'
 import { db } from '@/lib/db'
 
 export const runtime = 'nodejs'
@@ -7,7 +7,7 @@ export const maxDuration = 60
 
 export async function GET() {
   const user = await requireAuth()
-  if (!user) return // NextResponse already sent by requireAuth
+  if (!user) return unauthorized()
 
   try {
     // Export groups first (crews reference groups)

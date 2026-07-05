@@ -57,24 +57,46 @@ export function getDeptColor(dept: string): string {
   return deptColorMap[Math.abs(hash) % deptColorMap.length]
 }
 
+/** Helper: calculate week ranges for a given month.
+ *  W1=1-7, W2=8-14, W3=15-21, W4=22-28, W5=29-end of month (only if month has 29+ days)
+ *  Returns array of {week, start, end} for weeks that exist in the month.
+ */
+export function getWeekRangesForMonth(year: number, month: number): Array<{ week: number; start: number; end: number }> {
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const ranges: Array<{ week: number; start: number; end: number }> = [
+    { week: 1, start: 1, end: 7 },
+    { week: 2, start: 8, end: 14 },
+    { week: 3, start: 15, end: 21 },
+    { week: 4, start: 22, end: 28 },
+  ]
+  if (daysInMonth > 28) {
+    ranges.push({ week: 5, start: 29, end: daysInMonth })
+  }
+  return ranges
+}
+
+/** Get current week number (1-5) for a given date */
+export function getWeekNumber(dayOfMonth: number, daysInMonth: number): number {
+  if (dayOfMonth <= 7) return 1
+  if (dayOfMonth <= 14) return 2
+  if (dayOfMonth <= 21) return 3
+  if (dayOfMonth <= 28) return 4
+  return 5
+}
+
 export function getWeekRange(): { from: string; to: string } {
   const now = getWIBDate()
   const dayOfMonth = now.getDate()
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth()
-
-  let currentWeek = 1
-  if (dayOfMonth <= 7) currentWeek = 1
-  else if (dayOfMonth <= 14) currentWeek = 2
-  else if (dayOfMonth <= 21) currentWeek = 3
-  else currentWeek = 4
-
-  const weekStart = (currentWeek - 1) * 7 + 1
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
-  const weekEnd = currentWeek === 4 ? daysInMonth : Math.min(currentWeek * 7, daysInMonth)
+  const currentWeek = getWeekNumber(dayOfMonth, daysInMonth)
+
+  const ranges = getWeekRangesForMonth(currentYear, currentMonth)
+  const wr = ranges.find(r => r.week === currentWeek)!
 
   const fmt = (d: number) => `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-  return { from: fmt(weekStart), to: fmt(weekEnd) }
+  return { from: fmt(wr.start), to: fmt(wr.end) }
 }
 
 export function getMonthRange(): { from: string; to: string } {

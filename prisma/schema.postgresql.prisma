@@ -29,6 +29,7 @@ model Group {
   week2Target    Float   @default(0)
   week3Target    Float   @default(0)
   week4Target    Float   @default(0)
+  week5Target    Float   @default(0)
   crews          Crew[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

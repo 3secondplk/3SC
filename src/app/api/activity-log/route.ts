@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth'
+import { requireAuth, unauthorized } from '@/lib/auth'
 
 // ─────────────────────────────────────────────
 // GET /api/activity-log — Fetch recent activity logs
@@ -8,7 +8,7 @@ import { requireAuth } from '@/lib/auth'
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth()
-    if (!auth) return auth as NextResponse
+    if (!auth) return unauthorized()
 
     const { searchParams } = new URL(request.url)
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50')))

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireAuth, unauthorized } from '@/lib/auth'
 import { db } from '@/lib/db'
 import * as XLSX from 'xlsx'
 
@@ -33,7 +33,7 @@ function resolveColumn(headers: string[], aliases: string[]): string | null {
 
 export async function POST(request: NextRequest) {
   const user = await requireAuth()
-  if (!user) return // NextResponse already sent by requireAuth
+  if (!user) return unauthorized()
 
   try {
     const formData = await request.formData()
@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
           week2Target: 0,
           week3Target: 0,
           week4Target: 0,
+          week5Target: 0,
         },
       })
       defaultGroupId = defaultGroup.id

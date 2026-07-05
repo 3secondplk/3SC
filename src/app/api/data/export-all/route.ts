@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth'
+import { requireAuth, unauthorized } from '@/lib/auth'
 
 function serializeDates<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj, (_, value) => {
@@ -12,7 +12,7 @@ function serializeDates<T>(obj: T): T {
 export async function GET() {
   try {
     const user = await requireAuth()
-    if (user instanceof NextResponse) return user
+    if (!user) return unauthorized()
 
     const [admins, groups, crews, sales, activityLogs] = await Promise.all([
       db.admin.findMany({

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth'
+import { requireAuth, unauthorized } from '@/lib/auth'
 import * as crypto from 'crypto'
 import { logActivity } from '@/lib/activity-logger'
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth()
-    if (user instanceof NextResponse) return user
+    if (!user) return unauthorized()
 
     const { currentPassword, newPassword } = await request.json()
 

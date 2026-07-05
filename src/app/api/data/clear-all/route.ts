@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth'
+import { requireAuth, unauthorized } from '@/lib/auth'
 import { logActivity } from '@/lib/activity-logger'
 
 export async function DELETE() {
   try {
     const user = await requireAuth()
-    if (user instanceof NextResponse) return user
+    if (!user) return unauthorized()
 
     // Count before deletion
     const [salesCount, activityLogsCount, crewsCount, groupsCount] = await Promise.all([

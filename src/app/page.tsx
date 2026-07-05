@@ -72,6 +72,8 @@ export default function Home() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [dashPeriod, setDashPeriod] = useState<'today' | 'week' | 'month'>('today')
   const [dashLoading, setDashLoading] = useState(true)
+  const [dashMonth, setDashMonth] = useState(new Date().getMonth())
+  const [dashYear, setDashYear] = useState(new Date().getFullYear())
 
   // Claims state
   const [crews, setCrews] = useState<Crew[]>([])
@@ -245,16 +247,23 @@ export default function Home() {
   }, [])
 
   // Fetch dashboard data
+  const isCurrentMonth = dashMonth === new Date().getMonth() && dashYear === new Date().getFullYear()
+
   const fetchDashboard = useCallback(async () => {
     setDashLoading(true)
     try {
-      const r = await safeFetch(`/api/dashboard?period=${dashPeriod}`)
+      const params = new URLSearchParams({ period: dashPeriod })
+      if (!isCurrentMonth) {
+        params.set('month', String(dashMonth + 1))
+        params.set('year', String(dashYear))
+      }
+      const r = await safeFetch(`/api/dashboard?${params}`)
       const d = await r.json()
       if (d.error) { toast.error(d.error); return }
       setDashboard(d)
     } catch { toast.error('Gagal memuat dashboard') }
     finally { setDashLoading(false) }
-  }, [dashPeriod])
+  }, [dashPeriod, dashMonth, dashYear, isCurrentMonth])
 
   // Fetch crews for claim form — only when claims tab is active
   // NOTE: uses useRef (not useState) for loaded flag to avoid re-render
@@ -831,7 +840,7 @@ export default function Home() {
     } catch { toast.error('Gagal menghapus crew') }
   }
 
-  const handleSaveGroup = async (data: { name: string; logo: string; monthlyTarget: number; week1Target: number; week2Target: number; week3Target: number; week4Target: number }) => {
+  const handleSaveGroup = async (data: { name: string; logo: string; monthlyTarget: number; week1Target: number; week2Target: number; week3Target: number; week4Target: number; week5Target: number }) => {
     try {
       const method = editGroup ? 'PUT' : 'POST'
       const body = editGroup ? { id: editGroup.id, ...data } : data
@@ -1127,6 +1136,11 @@ export default function Home() {
               setActiveTab={setActiveTab}
               crewPhotoPreview={crewPhotoPreview}
               setCrewPhotoPreview={setCrewPhotoPreview}
+              dashMonth={dashMonth}
+              dashYear={dashYear}
+              isCurrentMonth={isCurrentMonth}
+              setDashMonth={setDashMonth}
+              setDashYear={setDashYear}
             />
 
             {/* ─── Claims Tab ───────────────────────────── */}
