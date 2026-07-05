@@ -14,9 +14,9 @@ import {
   Trophy, Medal, Target, TrendingUp, Users, Star, Zap, ArrowUpRight, ArrowDownRight,
   BarChart3, Calendar, Flame, Clock, Eye, RefreshCw, Upload, ShoppingCart, Package, X,
   Sun, CloudSun, CloudMoon, Moon, Sparkles, Receipt,
-  ArrowLeftRight, TrendingDown, Minus, CircleDollarSign, CalendarDays, ChevronLeft, ChevronRight,
+  ArrowLeftRight, TrendingDown, Minus, CircleDollarSign, CalendarDays,
 } from 'lucide-react'
-import { fmtRp, fmtNum, fadeIn, stagger, AnimatedCounter, SkeletonRow, AchievementBadge, CircularProgress, monthNames, getWIBDate, timeAgo, getWeekRangesForMonth } from '@/lib/cms-utils'
+import { fmtRp, fmtNum, fadeIn, stagger, AnimatedCounter, SkeletonRow, AchievementBadge, CircularProgress, monthNames, getWIBDate, timeAgo } from '@/lib/cms-utils'
 import type { DashboardData, CrewStat, GroupAchievement, GroupDetailData } from '@/lib/cms-types'
 import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import DashboardExport from '@/components/dashboard/DashboardExport'
@@ -39,49 +39,41 @@ interface DashboardTabProps {
   setActiveTab: (v: string) => void
   crewPhotoPreview: { name: string; photo: string } | null
   setCrewPhotoPreview: (v: { name: string; photo: string } | null) => void
-  dashMonth: number
-  dashYear: number
-  isCurrentMonth: boolean
-  setDashMonth: (m: number) => void
-  setDashYear: (y: number) => void
 }
 
 /* ─── Welcome Card ──────────────────────────────────────────── */
-function WelcomeCard({ dashboard, isCurrentMonth, dashMonth, dashYear }: { dashboard: DashboardData; isCurrentMonth: boolean; dashMonth: number; dashYear: number }) {
+function WelcomeCard({ dashboard }: { dashboard: DashboardData }) {
   const hour = getWIBDate().getHours()
+  let greeting: string
   let gradient: string
   let GreetingIcon: React.ElementType
   let iconColor: string
   let bgDecor: string
 
-  if (isCurrentMonth) {
-    if (hour >= 5 && hour < 11) {
-      gradient = 'from-amber-400 via-orange-400 to-rose-400'
-      GreetingIcon = Sun
-      iconColor = 'text-amber-200'
-      bgDecor = 'from-amber-500/10 via-orange-500/5 to-transparent'
-    } else if (hour >= 11 && hour < 15) {
-      gradient = 'from-[#9DB1CC] via-[#B5C7DB] to-[#7E95B3]'
-      GreetingIcon = CloudSun
-      iconColor = 'text-[#B5C7DB]'
-      bgDecor = 'from-[#9DB1CC]/10 via-[#B5C7DB]/5 to-transparent'
-    } else if (hour >= 15 && hour < 18) {
-      gradient = 'from-orange-400 via-rose-400 to-purple-400'
-      GreetingIcon = CloudMoon
-      iconColor = 'text-orange-200'
-      bgDecor = 'from-orange-500/10 via-rose-500/5 to-transparent'
-    } else {
-      gradient = 'from-indigo-500 via-purple-500 to-violet-500'
-      GreetingIcon = Moon
-      iconColor = 'text-indigo-200'
-      bgDecor = 'from-indigo-500/10 via-purple-500/5 to-transparent'
-    }
-  } else {
-    // Archive mode — muted gradient
-    gradient = 'from-[#B5C7DB] via-[#9DB1CC] to-[#7E95B3]'
-    GreetingIcon = CalendarDays
+  if (hour >= 5 && hour < 11) {
+    greeting = 'Selamat Pagi'
+    gradient = 'from-amber-400 via-orange-400 to-rose-400'
+    GreetingIcon = Sun
+    iconColor = 'text-amber-200'
+    bgDecor = 'from-amber-500/10 via-orange-500/5 to-transparent'
+  } else if (hour >= 11 && hour < 15) {
+    greeting = 'Selamat Siang'
+    gradient = 'from-[#9DB1CC] via-[#B5C7DB] to-[#7E95B3]'
+    GreetingIcon = CloudSun
     iconColor = 'text-[#B5C7DB]'
     bgDecor = 'from-[#9DB1CC]/10 via-[#B5C7DB]/5 to-transparent'
+  } else if (hour >= 15 && hour < 18) {
+    greeting = 'Selamat Sore'
+    gradient = 'from-orange-400 via-rose-400 to-purple-400'
+    GreetingIcon = CloudMoon
+    iconColor = 'text-orange-200'
+    bgDecor = 'from-orange-500/10 via-rose-500/5 to-transparent'
+  } else {
+    greeting = 'Selamat Malam'
+    gradient = 'from-indigo-500 via-purple-500 to-violet-500'
+    GreetingIcon = Moon
+    iconColor = 'text-indigo-200'
+    bgDecor = 'from-indigo-500/10 via-purple-500/5 to-transparent'
   }
 
   const todaySettle = dashboard.totals.today
@@ -89,16 +81,6 @@ function WelcomeCard({ dashboard, isCurrentMonth, dashMonth, dashYear }: { dashb
   const totalTx = dashboard.totals.totalTransactions
   const wib = getWIBDate()
   const dateStr = wib.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-
-  const greeting = (() => {
-    if (!isCurrentMonth) return null
-    if (hour >= 5 && hour < 11) return 'Selamat Pagi'
-    if (hour >= 11 && hour < 15) return 'Selamat Siang'
-    if (hour >= 15 && hour < 18) return 'Selamat Sore'
-    return 'Selamat Malam'
-  })()
-
-  const archiveTitle = isCurrentMonth ? null : `Arsip: ${monthNames[dashMonth]} ${dashYear}`
 
   return (
     <div className={"relative overflow-hidden rounded-2xl bg-gradient-to-r " + gradient + " p-[1px]"}>
@@ -123,17 +105,15 @@ function WelcomeCard({ dashboard, isCurrentMonth, dashMonth, dashYear }: { dashb
             <GreetingIcon className={"w-6 h-6 sm:w-7 sm:h-7 " + iconColor + " drop-shadow-md"} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm sm:text-base font-bold text-foreground">
-              {greeting ? <>{greeting}! 👋</> : <>{archiveTitle}</>}
-            </p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">{isCurrentMonth ? dateStr : `Data bulan ${monthNames[dashMonth]} ${dashYear}`}</p>
+            <p className="text-sm sm:text-base font-bold text-foreground">{greeting}! 👋</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">{dateStr}</p>
           </div>
           <div className="flex gap-3 sm:gap-5 shrink-0">
             <div className="text-center">
               <p className="text-lg sm:text-2xl font-extrabold text-foreground tabular-nums">
                 <AnimatedCounter value={todaySettle} prefix="Rp" />
               </p>
-              <p className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{isCurrentMonth ? 'Hari Ini' : 'Bulan Ini'}</p>
+              <p className="text-[9px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Hari Ini</p>
             </div>
             <div className="text-center">
               <p className="text-lg sm:text-2xl font-extrabold text-foreground tabular-nums">
@@ -150,8 +130,8 @@ function WelcomeCard({ dashboard, isCurrentMonth, dashMonth, dashYear }: { dashb
             <span>{fmtNum(totalTx)} transaksi total</span>
           </div>
           <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-muted-foreground">
-            <span className={`inline-block w-1.5 h-1.5 rounded-full ${isCurrentMonth ? 'bg-[#E14227] animate-pulse' : 'bg-muted-foreground/40'}`} />
-            <span>{isCurrentMonth ? 'Live Data' : 'Arsip'}</span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#E14227] animate-pulse" />
+            <span>Live Data</span>
           </div>
         </div>
       </div>
@@ -166,7 +146,6 @@ const DashboardTab = React.memo(function DashboardTab({
   groupDetailData, groupDetailPeriod, setGroupDetailPeriod, groupDetailLoading,
   fetchDashboard, setActiveTab,
   crewPhotoPreview, setCrewPhotoPreview,
-  dashMonth, dashYear, isCurrentMonth, setDashMonth, setDashYear,
 }: DashboardTabProps) {
   // Leaderboard view can be 'achievement' (client-side only, doesn't affect API period)
   const [isAchievementView, setIsAchievementView] = useState(false)
@@ -276,50 +255,11 @@ const DashboardTab = React.memo(function DashboardTab({
         <motion.div {...stagger} className="space-y-6">
           {/* ─── Selamat Datang Welcome Card ─── */}
           <motion.div initial={{ opacity: 0, y: -30, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}>
-            <WelcomeCard dashboard={dashboard} isCurrentMonth={isCurrentMonth} dashMonth={dashMonth} dashYear={dashYear} />
-          </motion.div>
-
-          {/* ─── Month / Year Filter ─── */}
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
-            <div className="flex items-center justify-center gap-2">
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => {
-                const m = dashMonth === 0 ? 11 : dashMonth - 1
-                const y = dashMonth === 0 ? dashYear - 1 : dashYear
-                setDashMonth(m)
-                setDashYear(y)
-              }}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <div className="flex items-center gap-2 min-w-[180px] justify-center">
-                <span className="text-sm sm:text-base font-bold text-foreground">{monthNames[dashMonth]}</span>
-                <span className="text-sm sm:text-base font-bold text-muted-foreground">{dashYear}</span>
-                {!isCurrentMonth && (
-                  <Badge variant="secondary" className="text-[9px] px-1.5 py-0 font-medium bg-[#F0D5C5] text-[#B8321E] dark:bg-[#1A1A1B]/60 dark:text-[#F07050] border-0">Arsip</Badge>
-                )}
-              </div>
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => {
-                const m = dashMonth === 11 ? 0 : dashMonth + 1
-                const y = dashMonth === 11 ? dashYear + 1 : dashYear
-                setDashMonth(m)
-                setDashYear(y)
-              }}>
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-              {!isCurrentMonth && (
-                <Button variant="outline" size="sm" className="h-8 ml-1 text-[11px] font-medium" onClick={() => {
-                  const now = getWIBDate()
-                  setDashMonth(now.getMonth())
-                  setDashYear(now.getFullYear())
-                }}>
-                  <CalendarDays className="w-3 h-3 mr-1" />
-                  Bulan Ini
-                </Button>
-              )}
-            </div>
+            <WelcomeCard dashboard={dashboard} />
           </motion.div>
 
           {/* Summary Cards — Total Import Summary (ALL imported data from Excel) */}
-          <div className={`grid gap-2.5 sm:gap-3 ${isCurrentMonth ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2'}`}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
             {/* Total Data Import */}
             <motion.div {...fadeIn} transition={{ delay: 0.05 }} whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300 } }}>
               <Card className="relative overflow-hidden border-0 shadow-lg group cursor-default">
@@ -348,7 +288,6 @@ const DashboardTab = React.memo(function DashboardTab({
               </Card>
             </motion.div>
             {/* Import Hari Ini */}
-            {isCurrentMonth && (
             <motion.div {...fadeIn} transition={{ delay: 0.1 }} whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300 } }}>
               <Card className="relative overflow-hidden border-0 shadow-lg group cursor-default">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#E14227] to-[#7E95B3] opacity-[0.04] group-hover:opacity-[0.08] transition-opacity" />
@@ -383,9 +322,7 @@ const DashboardTab = React.memo(function DashboardTab({
                 </CardContent>
               </Card>
             </motion.div>
-            )}
             {/* Import Minggu Ini */}
-            {isCurrentMonth && (
             <motion.div {...fadeIn} transition={{ delay: 0.15 }} whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300 } }}>
               <Card className="relative overflow-hidden border-0 shadow-lg group cursor-default">
                 <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-600 opacity-[0.04] group-hover:opacity-[0.08] transition-opacity" />
@@ -420,7 +357,6 @@ const DashboardTab = React.memo(function DashboardTab({
                 </CardContent>
               </Card>
             </motion.div>
-            )}
             {/* Import Bulan Ini */}
             <motion.div {...fadeIn} transition={{ delay: 0.2 }} whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300 } }}>
               <Card className="relative overflow-hidden border-0 shadow-lg group cursor-default">
@@ -460,7 +396,7 @@ const DashboardTab = React.memo(function DashboardTab({
 
           {/* ─── 2-Column Row: Minggu Ini vs Minggu Lalu + Data Insights ─── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          {isCurrentMonth && dashboard.lastWeekTotals && (
+          {dashboard.lastWeekTotals && (
             <motion.div {...fadeIn} transition={{ delay: 0.25 }}>
               <Card className="relative overflow-hidden border-0 shadow-lg group cursor-default glass-card">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#E14227]/5 via-[#9DB1CC]/3 to-[#9DB1CC]/5 group-hover:from-[#E14227]/8 group-hover:via-[#9DB1CC]/5 group-hover:to-[#9DB1CC]/8 transition-opacity pointer-events-none" />
@@ -1093,11 +1029,11 @@ const DashboardTab = React.memo(function DashboardTab({
                                   <span><Users className="w-2.5 h-2.5 inline mr-0.5" />{g.crewCount}</span>
                                   <span className="truncate font-semibold text-foreground">{fmtRp(g.monthlyTotal)}</span>
                                 </div>
-                                {/* All weekly progress bars (up to 5 weeks) */}
-                                <div className="grid grid-cols-5 gap-1.5">
+                                {/* All 4 weekly progress bars */}
+                                <div className="grid grid-cols-4 gap-1">
                                   {g.weeklyDetails?.map((wd) => (
                                     <div key={wd.week} className="text-center">
-                                      <div className="h-1.5 bg-muted/80 rounded-full overflow-hidden mb-0.5">
+                                      <div className="h-1 bg-muted/80 rounded-full overflow-hidden mb-0.5">
                                         <div
                                           className={`h-full rounded-full transition-all duration-700 ${wd.week === g.currentWeek ? 'bg-gradient-to-r from-[#E14227] to-[#D4956B]' : wd.achievement >= 100 ? 'bg-emerald-400' : 'bg-muted-foreground/30'}`}
                                           style={{ width: `${Math.min(wd.achievement, 100)}%` }}
@@ -1179,7 +1115,7 @@ const DashboardTab = React.memo(function DashboardTab({
                       ))}
                     </div>
                     {/* Desktop: 3-col grid with full cards */}
-                    <div className="hidden lg:grid lg:grid-cols-2 gap-4">
+                    <div className="hidden lg:grid lg:grid-cols-3 gap-4">
                       {dashboard.groupAchievements.map((g) => (
                         <motion.div key={g.id} whileHover={{ y: -6, transition: { type: 'spring', stiffness: 300 } }} whileTap={{ scale: 0.98 }}>
                           <Card
@@ -1213,7 +1149,7 @@ const DashboardTab = React.memo(function DashboardTab({
                                   </div>
                                 </div>
                               </div>
-                              {/* All Weekly Achievements (up to 5 weeks) */}
+                              {/* All 4 Weekly Achievements */}
                               <div className="space-y-2">
                                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Achievement per Minggu</p>
                                 {g.weeklyDetails?.map((wd) => (
