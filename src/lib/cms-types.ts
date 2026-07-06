@@ -69,6 +69,11 @@ export interface DashboardData {
     importedToday: number; importedTodayQty: number
     importedWeek: number; importedWeekQty: number
     importedMonth: number; importedMonthQty: number
+    // TikTok totals (Selesai only)
+    tiktokToday: number; tiktokTodayQty: number
+    tiktokWeek: number; tiktokWeekQty: number
+    tiktokMonth: number; tiktokMonthQty: number
+    tiktokAllTime: number
   }
   trends: { today: TrendData; week: TrendData; month: TrendData }
   groupAchievements: GroupAchievement[]; topCrews: CrewStat[]; recentSales: RecentSale[]
@@ -85,6 +90,7 @@ export interface Crew {
 export interface Group {
   id: string; name: string; logo: string | null; monthlyTarget: number
   week1Target: number; week2Target: number; week3Target: number; week4Target: number; week5Target: number
+  tiktokActive: boolean
   crewCount: number; crews: Crew[]
 }
 
