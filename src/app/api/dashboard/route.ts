@@ -235,6 +235,12 @@ export async function GET(request: NextRequest) {
       }
       return map
     })
+    // TikTok-only per-week maps (for visual breakdown)
+    const tkWeekOnlyMaps = weekAggResults.map(([_, tkAgg]) =>
+      new Map(tkAgg.map((a: any) => [a.crewId, a._sum.settle ?? 0]))
+    )
+    // TikTok-only month map
+    const tkMonthOnlyMap = new Map(tkMonthAgg.map((a: any) => [a.crewId, a._sum.settle ?? 0]))
 
     // Build group info map
     const groupInfoMap = new Map<string, { monthlyTarget: number; crewCount: number; weeklyTargetPcts: number[] }>()
@@ -370,6 +376,17 @@ export async function GET(request: NextRequest) {
       db.tikTokSale.aggregate({ _sum: { settle: true, qty: true }, where: { status: { in: ['Pengiriman', 'Selesai'] } } }),
     ])
 
+    // TikTok weekly breakdown for chart (Pengiriman + Selesai)
+    const tiktokWeeklyBreakdown = await Promise.all(
+      weekRanges.map(wr =>
+        db.tikTokSale.aggregate({
+          _sum: { settle: true, qty: true },
+          _count: true,
+          where: { status: { in: ['Pengiriman', 'Selesai'] }, tanggal: { gte: wr.startStr, lt: wr.endNextDayStr } },
+        })
+      )
+    )
+
     // --- Trends (only for current month) ---
     const saleGroupFilter = groupId ? { crew: { groupId } } : {}
     const [yesterdayAgg, lastWeekAgg, lastMonthAgg, lastWeekTotalsAgg, recentSales, groups] = isCurrentMonth
@@ -477,17 +494,21 @@ export async function GET(request: NextRequest) {
         const targetPct = weeklyTargetPcts[i]
         const weekTarget = group.monthlyTarget * (targetPct / 100)
         const weekTotal = group.crews.reduce((sum, c) => sum + (weekAggMaps[i].get(c.id) ?? 0), 0)
+        const weekTiktok = group.crews.reduce((sum, c) => sum + (tkWeekOnlyMaps[i].get(c.id) ?? 0), 0)
         const achievement = weekTarget > 0 ? Math.min(Math.round((weekTotal / weekTarget) * 100), 999) : 0
         return {
           week: wr.week,
           targetPct,
           target: Math.round(weekTarget),
           total: weekTotal,
+          tiktokTotal: weekTiktok,
           achievement,
           dateFrom: wr.start,
           dateTo: wr.end,
         }
       })
+
+      const groupTiktokMonth = group.crews.reduce((sum, c) => sum + (tkMonthOnlyMap.get(c.id) ?? 0), 0)
 
       return {
         id: group.id,
@@ -495,6 +516,7 @@ export async function GET(request: NextRequest) {
         logo: group.logo,
         monthlyTarget: group.monthlyTarget,
         monthlyTotal: groupMonthTotal,
+        tiktokMonthlyTotal: groupTiktokMonth,
         monthlyAchievement,
         weeklyTarget,
         weeklyTotal,
@@ -538,6 +560,15 @@ export async function GET(request: NextRequest) {
         tiktokMonth: tkMonthAgg2._sum.settle ?? 0,
         tiktokMonthQty: tkMonthAgg2._sum.qty ?? 0,
         tiktokAllTime: tkAllAgg2._sum.settle ?? 0,
+        // TikTok weekly breakdown
+        tiktokWeeklyBreakdown: weekRanges.map((wr, i) => ({
+          week: wr.week,
+          settle: tiktokWeeklyBreakdown[i]._sum.settle ?? 0,
+          qty: tiktokWeeklyBreakdown[i]._sum.qty ?? 0,
+          count: tiktokWeeklyBreakdown[i]._count ?? 0,
+          dateFrom: wr.start,
+          dateTo: wr.end,
+        })),
       },
       trends,
       groupAchievements,

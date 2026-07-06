@@ -35,6 +35,28 @@ function getWeekRanges(year: number, month: number): Array<{ week: number; start
   return ranges
 }
 
+// Merge Sale + TikTokSale aggregation maps
+function mergeSettleQty(saleAgg: any[], tiktokAgg: any[]): Map<string, { settle: number; qty: number; count: number }> {
+  const map = new Map(saleAgg.map(a => [a.crewId, { settle: a._sum.settle ?? 0, qty: a._sum.qty ?? 0, count: a._count ?? 0 }]))
+  for (const a of tiktokAgg) {
+    const existing = map.get(a.crewId) || { settle: 0, qty: 0, count: 0 }
+    map.set(a.crewId, {
+      settle: existing.settle + (a._sum.settle ?? 0),
+      qty: existing.qty + (a._sum.qty ?? 0),
+      count: existing.count + (a._count ?? 0),
+    })
+  }
+  return map
+}
+
+function mergeSettleOnly(saleAgg: any[], tiktokAgg: any[]): Map<string, number> {
+  const map = new Map(saleAgg.map(a => [a.crewId, a._sum.settle ?? 0]))
+  for (const a of tiktokAgg) {
+    map.set(a.crewId, (map.get(a.crewId) ?? 0) + (a._sum.settle ?? 0))
+  }
+  return map
+}
+
 // GET /api/dashboard/group-detail?groupId=xxx&period=daily
 export async function GET(request: NextRequest) {
   try {
@@ -111,7 +133,7 @@ export async function GET(request: NextRequest) {
         period: periodLabel,
         periodKey: period,
         crews: [],
-        groupTotal: { qty: 0, settle: 0, struk: 0, basketSize: 0, pricePoint: 0 },
+        groupTotal: { qty: 0, settle: 0, struk: 0, basketSize: 0, pricePoint: 0, tiktokSettle: 0 },
         crewMonthlyTarget: 0,
         weeklyTargetPcts,
         crewWeeklyTargets: [0, 0, 0, 0, 0],
@@ -119,11 +141,19 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Parallel queries
-    const [aggResult, strukResult] = await Promise.all([
+    const tiktokStatusFilter = { status: { in: ['Pengiriman', 'Selesai'] } }
+
+    // Parallel queries: Sale + TikTokSale
+    const [saleAgg, tiktokAgg, strukResult] = await Promise.all([
       db.sale.groupBy({
         by: ['crewId'],
         where: { crewId: { in: crewIds }, tanggal: prismaDateFilter },
+        _sum: { settle: true, qty: true },
+        _count: true,
+      }),
+      db.tikTokSale.groupBy({
+        by: ['crewId'],
+        where: { crewId: { in: crewIds }, ...tiktokStatusFilter, tanggal: prismaDateFilter },
         _sum: { settle: true, qty: true },
         _count: true,
       }),
@@ -135,7 +165,9 @@ export async function GET(request: NextRequest) {
       `,
     ])
 
-    const aggMap = new Map(aggResult.map(a => [a.crewId, a]))
+    // Merge Sale + TikTokSale
+    const mergedAgg = mergeSettleQty(saleAgg, tiktokAgg)
+    const tiktokSettleMap = new Map(tiktokAgg.map(a => [a.crewId, a._sum.settle ?? 0]))
     const strukMap = new Map(strukResult.map(r => [r.crewId, Number(r.count)]))
 
     // Target calculation
@@ -145,22 +177,30 @@ export async function GET(request: NextRequest) {
     const crewWeeklyTargets = weeklyTargetPcts.map(pct => Math.round((crewMonthlyTarget * pct) / 100))
     const crewCurrentWeekTarget = crewWeeklyTargets[currentWeek - 1] ?? 0
 
-    // Query per-week aggregation
+    // Query per-week aggregation (Sale + TikTokSale merged per week)
     const weekAggPromises = weekRanges.map(wr =>
-      db.sale.groupBy({
-        by: ['crewId'],
-        where: { crewId: { in: crewIds }, tanggal: { gte: wr.startStr, lt: wr.endNextDayStr } },
-        _sum: { settle: true },
-      })
+      Promise.all([
+        db.sale.groupBy({
+          by: ['crewId'],
+          where: { crewId: { in: crewIds }, tanggal: { gte: wr.startStr, lt: wr.endNextDayStr } },
+          _sum: { settle: true },
+        }),
+        db.tikTokSale.groupBy({
+          by: ['crewId'],
+          where: { crewId: { in: crewIds }, ...tiktokStatusFilter, tanggal: { gte: wr.startStr, lt: wr.endNextDayStr } },
+          _sum: { settle: true },
+        }),
+      ])
     )
     const weekAggResults = await Promise.all(weekAggPromises)
-    const weekAggMaps = weekAggResults.map(agg => new Map(agg.map(a => [a.crewId, a._sum.settle ?? 0])))
+    const weekAggMaps = weekAggResults.map(([saleAgg, tkAgg]) => mergeSettleOnly(saleAgg, tkAgg))
 
     const crews = group.crews.map(crew => {
-      const agg = aggMap.get(crew.id)
+      const agg = mergedAgg.get(crew.id)
       const struk = strukMap.get(crew.id) ?? 0
-      const qty = agg?._sum.qty ?? 0
-      const settle = agg?._sum.settle ?? 0
+      const qty = agg?.qty ?? 0
+      const settle = agg?.settle ?? 0
+      const tiktokSettle = tiktokSettleMap.get(crew.id) ?? 0
       const basketSize = struk > 0 ? qty / struk : 0
       const pricePoint = qty > 0 ? settle / qty : 0
 
@@ -192,10 +232,11 @@ export async function GET(request: NextRequest) {
         employeeId: crew.employeeId,
         totalQty: qty,
         totalSettle: settle,
+        tiktokSettle,
         totalStruk: struk,
         basketSize: Math.round(basketSize * 100) / 100,
         pricePoint: Math.round(pricePoint),
-        itemCount: agg?._count ?? 0,
+        itemCount: agg?.count ?? 0,
         crewMonthlyTarget,
         crewCurrentWeekTarget,
         crewMonthlyAchievement: monthAchievement,
@@ -208,6 +249,7 @@ export async function GET(request: NextRequest) {
 
     const groupTotalQty = crews.reduce((s, c) => s + c.totalQty, 0)
     const groupTotalSettle = crews.reduce((s, c) => s + c.totalSettle, 0)
+    const groupTiktokSettle = crews.reduce((s, c) => s + c.tiktokSettle, 0)
     const groupTotalStruk = crews.reduce((s, c) => s + c.totalStruk, 0)
     const groupBasketSize = groupTotalStruk > 0 ? Math.round((groupTotalQty / groupTotalStruk) * 100) / 100 : 0
     const groupPricePoint = groupTotalQty > 0 ? Math.round(groupTotalSettle / groupTotalQty) : 0
@@ -217,7 +259,7 @@ export async function GET(request: NextRequest) {
       period: periodLabel,
       periodKey: period,
       crews,
-      groupTotal: { qty: groupTotalQty, settle: groupTotalSettle, struk: groupTotalStruk, basketSize: groupBasketSize, pricePoint: groupPricePoint },
+      groupTotal: { qty: groupTotalQty, settle: groupTotalSettle, struk: groupTotalStruk, basketSize: groupBasketSize, pricePoint: groupPricePoint, tiktokSettle: groupTiktokSettle },
       crewMonthlyTarget,
       weeklyTargetPcts,
       crewWeeklyTargets,

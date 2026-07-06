@@ -32,7 +32,7 @@ export interface CrewStat {
 
 export interface GroupAchievement {
   id: string; name: string; logo: string | null
-  monthlyTarget: number; monthlyTotal: number; monthlyAchievement: number
+  monthlyTarget: number; monthlyTotal: number; tiktokMonthlyTotal: number; monthlyAchievement: number
   weeklyTarget: number; weeklyTotal: number; weeklyAchievement: number
   weekTargetPct: number; currentWeek: number; crewCount: number
   // Per-crew target breakdown
@@ -44,7 +44,8 @@ export interface GroupAchievement {
     week: number // 1-5
     targetPct: number // e.g. 25 means 25%
     target: number // actual Rp target for this group
-    total: number // actual sales Rp for this week
+    total: number // actual sales Rp for this week (Store + TikTok)
+    tiktokTotal: number // TikTok-only sales Rp for this week
     achievement: number // percentage achieved
     dateFrom: number // start day of month
     dateTo: number // end day of month
@@ -69,11 +70,13 @@ export interface DashboardData {
     importedToday: number; importedTodayQty: number
     importedWeek: number; importedWeekQty: number
     importedMonth: number; importedMonthQty: number
-    // TikTok totals (Selesai only)
+    // TikTok totals (Pengiriman + Selesai)
     tiktokToday: number; tiktokTodayQty: number
     tiktokWeek: number; tiktokWeekQty: number
     tiktokMonth: number; tiktokMonthQty: number
     tiktokAllTime: number
+    // TikTok weekly breakdown
+    tiktokWeeklyBreakdown: Array<{ week: number; settle: number; qty: number; count: number; dateFrom: number; dateTo: number }>
   }
   trends: { today: TrendData; week: TrendData; month: TrendData }
   groupAchievements: GroupAchievement[]; topCrews: CrewStat[]; recentSales: RecentSale[]

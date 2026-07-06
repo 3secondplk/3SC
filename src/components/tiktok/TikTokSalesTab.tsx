@@ -46,10 +46,8 @@ interface TikTokSummary {
   count: number
 }
 
-interface TikTokSalesTabProps {
-  crews: Crew[]
-  groups: Array<{ id: string; name: string; tiktokActive: boolean }>
-}
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+interface TikTokSalesTabProps {}
 
 const STATUS_OPTIONS = ['Pengiriman', 'Selesai', 'Retur', 'Batal'] as const
 
@@ -72,10 +70,15 @@ const EMPTY_FORM = {
 }
 
 // ─── Component ──────────────────────────────────────────
-const TikTokSalesTab: React.FC<TikTokSalesTabProps> = ({ crews, groups }) => {
-  // Only show crews from TikTok-active groups
-  const activeGroupIds = new Set(groups.filter(g => g.tiktokActive).map(g => g.id))
-  const tiktokCrews = useMemo(() => crews.filter(c => activeGroupIds.has(c.group?.id || c.groupId)), [crews, activeGroupIds])
+const TikTokSalesTab: React.FC<TikTokSalesTabProps> = () => {
+  // Fetch crews from TikTok-active groups (public, no auth needed)
+  const [tiktokCrews, setTiktokCrews] = useState<Crew[]>([])
+  useEffect(() => {
+    fetch('/api/tiktok-crews')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setTiktokCrews(d) })
+      .catch(() => {})
+  }, [])
 
   // Data state
   const [items, setItems] = useState<TikTokSaleItem[]>([])

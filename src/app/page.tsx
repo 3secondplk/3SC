@@ -1217,7 +1217,7 @@ export default function Home() {
             />
 
             {/* ─── TikTok Sales Tab ────────────────────── */}
-            <TikTokSalesTab crews={crews} groups={groups} />
+            <TikTokSalesTab />
 
             {/* ─── Export Tab ─────────────────────────── */}
             <ExportTab

@@ -457,7 +457,7 @@ const DashboardTab = React.memo(function DashboardTab({
               </Card>
             </motion.div>
 
-            {/* ─── TikTok Card ─── */}
+            {/* ─── TikTok Card with Weekly Chart ─── */}
             <motion.div {...fadeIn} transition={{ delay: 0.18 }}>
               <Card className="relative overflow-hidden border-0 shadow-lg group cursor-default glass-card">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#E14227]/5 via-[#D4956B]/3 to-[#B87333]/5 group-hover:from-[#E14227]/8 group-hover:via-[#D4956B]/5 group-hover:to-[#B87333]/8 transition-opacity pointer-events-none" />
@@ -466,17 +466,45 @@ const DashboardTab = React.memo(function DashboardTab({
                     <div className="space-y-1 min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <p className="text-[10px] sm:text-xs font-medium text-muted-foreground">TikTok Bulan Ini</p>
-                        <Badge variant="outline" className="text-[8px] px-1.5 py-0 border-[#E14227]/30 text-[#E14227]">Selesai</Badge>
+                        <Badge variant="outline" className="text-[8px] px-1.5 py-0 border-[#E14227]/30 text-[#E14227]">Pengiriman + Selesai</Badge>
                       </div>
                       <p className="text-base sm:text-xl font-bold tracking-tight">
                         <AnimatedCounter value={dashboard.totals.tiktokMonth ?? 0} prefix="Rp" />
                       </p>
-                      <p className="text-[10px] text-muted-foreground">{fmtNum(dashboard.totals.tiktokMonthQty ?? 0)} items · Minggu: {fmtRp(dashboard.totals.tiktokWeek ?? 0)}</p>
+                      <p className="text-[10px] text-muted-foreground">{fmtNum(dashboard.totals.tiktokMonthQty ?? 0)} items · Minggu ini: {fmtRp(dashboard.totals.tiktokWeek ?? 0)}</p>
                     </div>
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#E14227] to-[#D4956B] shadow-lg shadow-[#E14227]/20 flex items-center justify-center group-hover:scale-110 transition-transform">
                       <ShoppingBag className="w-4 h-4 text-white" />
                     </div>
                   </div>
+                  {/* Weekly mini bar chart */}
+                  {dashboard.totals.tiktokWeeklyBreakdown && dashboard.totals.tiktokWeeklyBreakdown.length > 0 && (
+                    <div className="flex items-end gap-1.5 mt-3 pt-3 border-t border-border/30">
+                      {dashboard.totals.tiktokWeeklyBreakdown.map((w) => {
+                        const maxSettle = Math.max(...dashboard.totals.tiktokWeeklyBreakdown.map(x => x.settle), 1)
+                        const heightPct = (w.settle / maxSettle) * 100
+                        const isCurrentWeek = w.week === dashboard.dateInfo.currentWeek
+                        return (
+                          <div key={w.week} className="flex-1 flex flex-col items-center gap-0.5">
+                            <span className="text-[7px] sm:text-[8px] text-muted-foreground tabular-nums truncate max-w-full">
+                              {w.settle > 0 ? (w.settle >= 1000000 ? `${(w.settle / 1000000).toFixed(1)}jt` : w.settle >= 1000 ? `${(w.settle / 1000).toFixed(0)}rb` : '0') : '—'}
+                            </span>
+                            <div className="w-full flex items-end justify-center" style={{ height: '28px' }}>
+                              <motion.div
+                                initial={{ height: 0 }}
+                                animate={{ height: `${Math.max(heightPct, 4)}%` }}
+                                transition={{ duration: 0.6, delay: w.week * 0.1 }}
+                                className={`w-full max-w-[28px] rounded-t-sm ${isCurrentWeek ? 'bg-gradient-to-t from-[#E14227] to-[#D4956B]' : w.settle > 0 ? 'bg-[#E14227]/40' : 'bg-muted/50'}`}
+                              />
+                            </div>
+                            <span className={`text-[8px] font-semibold tabular-nums ${isCurrentWeek ? 'text-[#E14227]' : 'text-muted-foreground/60'}`}>
+                              W{w.week}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>
@@ -1114,16 +1142,25 @@ const DashboardTab = React.memo(function DashboardTab({
                                 <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
                                   <span><Users className="w-2.5 h-2.5 inline mr-0.5" />{g.crewCount}</span>
                                   <span className="truncate font-semibold text-foreground">{fmtRp(g.monthlyTotal)}</span>
+                                  {g.tiktokMonthlyTotal > 0 && (
+                                    <span className="text-[#E14227] font-semibold">🛒 {fmtRp(g.tiktokMonthlyTotal)}</span>
+                                  )}
                                 </div>
                                 {/* All weekly progress bars (up to 5 weeks) */}
                                 <div className="grid grid-cols-5 gap-1.5">
                                   {g.weeklyDetails?.map((wd) => (
                                     <div key={wd.week} className="text-center">
-                                      <div className="h-1.5 bg-muted/80 rounded-full overflow-hidden mb-0.5">
+                                      <div className="h-1.5 bg-muted/80 rounded-full overflow-hidden mb-0.5 relative">
                                         <div
                                           className={`h-full rounded-full transition-all duration-700 ${wd.week === g.currentWeek ? 'bg-gradient-to-r from-[#E14227] to-[#D4956B]' : wd.achievement >= 100 ? 'bg-emerald-400' : 'bg-muted-foreground/30'}`}
                                           style={{ width: `${Math.min(wd.achievement, 100)}%` }}
                                         />
+                                        {wd.tiktokTotal > 0 && wd.total > 0 && (
+                                          <div
+                                            className="absolute top-0 left-0 h-full rounded-full bg-[#E14227] opacity-50"
+                                            style={{ width: `${Math.min((wd.tiktokTotal / wd.total) * Math.min(wd.achievement, 100), 100)}%` }}
+                                          />
+                                        )}
                                       </div>
                                       <span className={`text-[8px] font-semibold tabular-nums ${wd.week === g.currentWeek ? 'text-[#E14227]' : 'text-muted-foreground'}`}>
                                         W{wd.week}
@@ -1170,7 +1207,10 @@ const DashboardTab = React.memo(function DashboardTab({
                                 <div className="flex-1 min-w-0">
                                   <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Bulanan</p>
                                   <p className="text-sm font-bold truncate">{fmtRp(g.monthlyTotal)}</p>
-                                  <p className="text-[10px] text-muted-foreground">Target: {fmtRp(g.monthlyTarget)}</p>
+                                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                                    <span>Target: {fmtRp(g.monthlyTarget)}</span>
+                                    {g.tiktokMonthlyTotal > 0 && <span className="text-[#E14227] font-medium">🛒 TikTok: {fmtRp(g.tiktokMonthlyTotal)}</span>}
+                                  </div>
                                 </div>
                               </div>
                               <div className="space-y-1.5">
@@ -1179,6 +1219,7 @@ const DashboardTab = React.memo(function DashboardTab({
                                     <div className="flex justify-between items-center">
                                       <p className={`text-[10px] ${wd.week === g.currentWeek ? 'font-semibold text-[#E14227]' : 'text-muted-foreground'}`}>
                                         W{wd.week} ({wd.targetPct}%) tgl {wd.dateFrom}-{wd.dateTo}
+                                        {wd.tiktokTotal > 0 && <span className="ml-1 text-[#E14227]/70">🛒</span>}
                                       </p>
                                       <p className={`text-[10px] font-semibold ${wd.achievement >= 100 ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
                                         {wd.achievement}%
@@ -1232,6 +1273,9 @@ const DashboardTab = React.memo(function DashboardTab({
                                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Bulanan</p>
                                     <p className="text-sm font-bold">{fmtRp(g.monthlyTotal)}</p>
                                     <p className="text-xs text-muted-foreground">Target: {fmtRp(g.monthlyTarget)}</p>
+                                    {g.tiktokMonthlyTotal > 0 && (
+                                      <p className="text-[10px] text-[#E14227] font-medium mt-0.5">🛒 TikTok: {fmtRp(g.tiktokMonthlyTotal)}</p>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -1244,6 +1288,7 @@ const DashboardTab = React.memo(function DashboardTab({
                                       <p className={`text-[10px] ${wd.week === g.currentWeek ? 'font-semibold text-[#E14227] dark:text-[#F07050]' : 'text-muted-foreground'}`}>
                                         Minggu {wd.week} ({wd.targetPct}%) · tgl {wd.dateFrom}-{wd.dateTo}
                                         {wd.week === g.currentWeek && <span className="ml-1 text-[8px] bg-[#E14227]/10 text-[#E14227] px-1 py-0.5 rounded">Sekarang</span>}
+                                        {wd.tiktokTotal > 0 && <span className="ml-1.5 text-[#E14227]/70 text-[9px]">🛒 {fmtRp(wd.tiktokTotal)}</span>}
                                       </p>
                                       <p className={`text-[10px] font-semibold tabular-nums ${wd.achievement >= 100 ? 'text-emerald-600 dark:text-emerald-400' : wd.week === g.currentWeek ? 'text-[#E14227] dark:text-[#F07050]' : ''}`}>
                                         {wd.achievement}%
@@ -1265,11 +1310,23 @@ const DashboardTab = React.memo(function DashboardTab({
                               <div className="mt-2">
                                 <div className="flex justify-between items-center mb-1">
                                   <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Progress Bulanan</span>
-                                  <span className="text-xs font-bold tabular-nums">{Math.round(g.monthlyAchievement)}%</span>
+                                  <div className="flex items-center gap-2">
+                                    {g.tiktokMonthlyTotal > 0 && <span className="text-[9px] text-[#E14227]">🛒 {fmtRp(g.tiktokMonthlyTotal)}</span>}
+                                    <span className="text-xs font-bold tabular-nums">{Math.round(g.monthlyAchievement)}%</span>
+                                  </div>
                                 </div>
-                                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                <div className="h-2 bg-muted rounded-full overflow-hidden relative">
                                   <motion.div initial={{ width: 0 }} animate={{ width: Math.min(g.monthlyAchievement, 100) + '%' }} transition={{ duration: 1, ease: 'easeOut', delay: 0.3 }}
-                                    className="h-full rounded-full bg-gradient-to-r from-[#E6BAA3] to-[#9DB1CC] shadow-sm" />
+                                    className="h-full rounded-full bg-gradient-to-r from-[#E6BAA3] to-[#9DB1CC] shadow-sm"
+                                  />
+                                  {g.tiktokMonthlyTotal > 0 && g.monthlyTotal > 0 && (
+                                    <motion.div
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${Math.min((g.tiktokMonthlyTotal / g.monthlyTotal) * Math.min(g.monthlyAchievement, 100), 100)}%` }}
+                                      transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
+                                      className="absolute top-0 left-0 h-full rounded-l-full bg-[#E14227] opacity-40"
+                                    />
+                                  )}
                                 </div>
                               </div>
                               {/* Click hint */}
