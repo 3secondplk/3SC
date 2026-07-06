@@ -31,21 +31,23 @@ model Group {
   week3Target    Float   @default(0)
   week4Target    Float   @default(0)
   week5Target    Float   @default(0)
+  tiktokActive   Boolean @default(false)
   crews          Crew[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
 
 model Crew {
-  id         String  @id @default(cuid())
-  name       String
-  photo      String?
-  employeeId String  @unique
-  groupId    String
-  group      Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  sales      Sale[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String      @id @default(cuid())
+  name        String
+  photo       String?
+  employeeId  String      @unique
+  groupId     String
+  group       Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sales       Sale[]
+  tiktokSales TikTokSale[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }
 
 model Sale {
@@ -81,6 +83,27 @@ model Sale {
   @@index([program])
   @@index([tanggal, kodeExtend])
   @@index([idPenjualan])
+}
+
+model TikTokSale {
+  id        String   @id @default(cuid())
+  crewId    String?
+  crew      Crew?    @relation(fields: [crewId], references: [id], onDelete: SetNull)
+  tanggal   String
+  idOrder   String
+  status    String   @default("Pengiriman")
+  artikel   String
+  size      String?
+  qty       Int      @default(1)
+  revenue   Float    @default(0)
+  settle    Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tanggal])
+  @@index([crewId])
+  @@index([status])
+  @@index([idOrder])
 }
 
 model ActivityLog {

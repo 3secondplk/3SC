@@ -14,13 +14,14 @@ import {
   LayoutDashboard, Upload, Settings, Layers, Sun, Moon, Shield, LogOut,
   ChevronUp, Users, Crown, Target, Calendar, UserCheck, CheckCircle2,
   DollarSign, ShoppingCart, Search, X, Sparkles, Heart,
-  Monitor, Briefcase, Beaker, Code2, Smartphone, Clock, Sunset, FileUp, UserPlus, Keyboard, Download,
+  Monitor, Briefcase, Beaker, Code2, Smartphone, Clock, Sunset, FileUp, UserPlus, Keyboard, Download, ShoppingBag,
 } from 'lucide-react'
 import { fmtRp, fmtNum, getWIBDate, getWIBToday, monthNames, dayNames, currentYear, getWeekRange, getMonthRange, safeFetch } from '@/lib/cms-utils'
 import type { CrewStat, GroupAchievement, DashboardData, Crew, Group, ClaimSale, GroupDetailData, DeleteConfirmState } from '@/lib/cms-types'
 
 import DashboardTab from '@/components/dashboard/DashboardTab'
 import ClaimsTab from '@/components/claims/ClaimsTab'
+import TikTokSalesTab from '@/components/tiktok/TikTokSalesTab'
 import ManagementTab from '@/components/management/ManagementTab'
 import ExportTab from '@/components/export/ExportTab'
 import DeleteConfirmDialog from '@/components/modals/DeleteConfirmDialog'
@@ -840,7 +841,7 @@ export default function Home() {
     } catch { toast.error('Gagal menghapus crew') }
   }
 
-  const handleSaveGroup = async (data: { name: string; logo: string; monthlyTarget: number; week1Target: number; week2Target: number; week3Target: number; week4Target: number; week5Target: number }) => {
+  const handleSaveGroup = async (data: { name: string; logo: string; monthlyTarget: number; week1Target: number; week2Target: number; week3Target: number; week4Target: number; week5Target: number; tiktokActive: boolean }) => {
     try {
       const method = editGroup ? 'PUT' : 'POST'
       const body = editGroup ? { id: editGroup.id, ...data } : data
@@ -927,6 +928,7 @@ export default function Home() {
   const navItems = [
     { val: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', desc: 'Ringkasan & statistik' },
     { val: 'claims', icon: Upload, label: 'Claim Penjualan', desc: 'Upload & klaim data' },
+    { val: 'tiktok', icon: ShoppingBag, label: 'TikTok', desc: 'Penjualan TikTok' },
     { val: 'export', icon: Download, label: 'Export Data', desc: 'Preview & ekspor penjualan' },
     { val: 'management', icon: Settings, label: 'Management', desc: 'Kelola crew & grup' },
   ]
@@ -1213,6 +1215,9 @@ export default function Home() {
               setDeleteConfirm={setDeleteConfirm}
               setActiveTab={setActiveTab}
             />
+
+            {/* ─── TikTok Sales Tab ────────────────────── */}
+            <TikTokSalesTab crews={crews} groups={groups} />
 
             {/* ─── Export Tab ─────────────────────────── */}
             <ExportTab

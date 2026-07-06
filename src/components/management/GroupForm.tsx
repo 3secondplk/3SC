@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { Target, Layers, DollarSign, CalendarDays, AlertCircle, Check, X, Save } from 'lucide-react'
+import { Target, Layers, DollarSign, CalendarDays, AlertCircle, Check, X, Save, ShoppingBag } from 'lucide-react'
 import { fmtRp } from '@/lib/cms-utils'
 import { getWIBDate } from '@/lib/cms-utils'
 import type { Group } from '@/lib/cms-types'
@@ -41,7 +41,7 @@ const weekAccentColors = [
 
 export default function GroupForm({ group, onSave, onCancel }: {
   group?: Group
-  onSave: (data: { name: string; logo: string; monthlyTarget: number; week1Target: number; week2Target: number; week3Target: number; week4Target: number; week5Target: number }) => void
+  onSave: (data: { name: string; logo: string; monthlyTarget: number; week1Target: number; week2Target: number; week3Target: number; week4Target: number; week5Target: number; tiktokActive: boolean }) => void
   onCancel: () => void
 }) {
   const [form, setForm] = useState({
@@ -53,6 +53,7 @@ export default function GroupForm({ group, onSave, onCancel }: {
     week3Target: group?.week3Target?.toString() || '25',
     week4Target: group?.week4Target?.toString() || '20',
     week5Target: group?.week5Target?.toString() || '10',
+    tiktokActive: group?.tiktokActive ?? false,
   })
   const [touched, setTouched] = useState(false)
 
@@ -85,6 +86,7 @@ export default function GroupForm({ group, onSave, onCancel }: {
       week3Target: Number(form.week3Target) || 0,
       week4Target: Number(form.week4Target) || 0,
       week5Target: Number(form.week5Target) || 0,
+      tiktokActive: form.tiktokActive,
     })
   }
 
@@ -142,6 +144,28 @@ export default function GroupForm({ group, onSave, onCancel }: {
             />
             <Layers className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50 pointer-events-none" />
           </div>
+        </div>
+
+        {/* TikTok Active Toggle */}
+        <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/30">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#E14227] to-[#D4956B] flex items-center justify-center flex-shrink-0">
+              <ShoppingBag className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">Aktif di TikTok</p>
+              <p className="text-[10px] text-muted-foreground">Crew grup ini muncul di halaman Penjualan TikTok</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setForm(f => ({ ...f, tiktokActive: !f.tiktokActive }))}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+              form.tiktokActive ? 'bg-[#E14227]' : 'bg-muted'
+            }`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${form.tiktokActive ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
         </div>
 
         {/* Monthly Target with Rp Preview */}

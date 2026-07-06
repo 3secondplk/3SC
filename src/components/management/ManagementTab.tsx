@@ -164,7 +164,7 @@ interface ManagementTabProps {
   filteredGroups: Group[]
   handleSaveCrew: (data: { name: string; photo: string; employeeId: string; groupId: string; removePhoto?: boolean }) => void
   handleDeleteCrew: (id: string) => void
-  handleSaveGroup: (data: { name: string; logo: string; monthlyTarget: number; week1Target: number; week2Target: number; week3Target: number; week4Target: number; week5Target: number }) => void
+  handleSaveGroup: (data: { name: string; logo: string; monthlyTarget: number; week1Target: number; week2Target: number; week3Target: number; week4Target: number; week5Target: number; tiktokActive: boolean }) => void
   handleDeleteGroup: (id: string) => void
   setDeleteConfirm: (v: { type: 'crew' | 'group' | 'sale' | 'batch-sale'; ids?: string[]; id?: string; name: string } | null) => void
   onImportSuccess?: () => void

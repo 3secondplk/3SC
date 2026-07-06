@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     if (!auth) return unauthorized()
 
     const body = await request.json()
-    const { name, logo, monthlyTarget, week1Target, week2Target, week3Target, week4Target, week5Target } = body
+    const { name, logo, monthlyTarget, week1Target, week2Target, week3Target, week4Target, week5Target, tiktokActive } = body
 
     if (!name) {
       return NextResponse.json({ error: 'Nama group harus diisi' }, { status: 400 })
@@ -143,6 +143,7 @@ export async function POST(request: NextRequest) {
         week3Target: w3,
         week4Target: w4,
         week5Target: w5,
+        tiktokActive: tiktokActive === true,
       },
     })
 
@@ -167,7 +168,7 @@ export async function PUT(request: NextRequest) {
     if (!auth) return unauthorized()
 
     const body = await request.json()
-    const { id, name, logo, monthlyTarget, week1Target, week2Target, week3Target, week4Target, week5Target } = body
+    const { id, name, logo, monthlyTarget, week1Target, week2Target, week3Target, week4Target, week5Target, tiktokActive } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID group harus diisi' }, { status: 400 })
@@ -188,6 +189,7 @@ export async function PUT(request: NextRequest) {
         ...(week3Target !== undefined && { week3Target }),
         ...(week4Target !== undefined && { week4Target }),
         ...(week5Target !== undefined && { week5Target }),
+        ...(tiktokActive !== undefined && { tiktokActive }),
       },
     })
 

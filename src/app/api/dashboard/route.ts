@@ -99,8 +99,9 @@ export async function GET(request: NextRequest) {
     })
     const crewIds = crews.map(c => c.id)
 
-    // Use groupBy aggregation
-    const [monthAgg, todayAgg, weekAgg, allTimeAgg] = crewIds.length > 0
+    // Use groupBy aggregation (Sale + TikTokSale combined)
+    const [monthAgg, todayAgg, weekAgg, allTimeAgg,
+          tkMonthAgg, tkTodayAgg, tkWeekAgg, tkAllTimeAgg] = crewIds.length > 0
       ? await Promise.all([
           db.sale.groupBy({
             by: ['crewId'],
@@ -126,13 +127,52 @@ export async function GET(request: NextRequest) {
             _sum: { settle: true, qty: true },
             _count: true,
           }),
+          // TikTok aggregations (Pengiriman + Selesai = active sales)
+          db.tikTokSale.groupBy({
+            by: ['crewId'],
+            where: { crewId: { in: crewIds }, status: { in: ['Pengiriman', 'Selesai'] }, tanggal: { startsWith: monthPrefix } },
+            _sum: { settle: true, qty: true },
+            _count: true,
+          }),
+          db.tikTokSale.groupBy({
+            by: ['crewId'],
+            where: { crewId: { in: crewIds }, status: { in: ['Pengiriman', 'Selesai'] }, tanggal: { startsWith: todayStr } },
+            _sum: { settle: true, qty: true },
+            _count: true,
+          }),
+          db.tikTokSale.groupBy({
+            by: ['crewId'],
+            where: { crewId: { in: crewIds }, status: { in: ['Pengiriman', 'Selesai'] }, tanggal: { gte: weekStartStr, lt: weekEndNextDayStr } },
+            _sum: { settle: true, qty: true },
+            _count: true,
+          }),
+          db.tikTokSale.groupBy({
+            by: ['crewId'],
+            where: { crewId: { in: crewIds }, status: { in: ['Pengiriman', 'Selesai'] } },
+            _sum: { settle: true, qty: true },
+            _count: true,
+          }),
         ])
-      : [[], [], [], []]
+      : [[], [], [], [], [], [], [], []]
 
-    const monthMap = new Map(monthAgg.map(a => [a.crewId, a]))
-    const todayMap = new Map(todayAgg.map(a => [a.crewId, a]))
-    const weekMap = new Map(weekAgg.map(a => [a.crewId, a]))
-    const allTimeMap = new Map(allTimeAgg.map(a => [a.crewId, a]))
+    // Merge Sale + TikTokSale into combined maps
+    const mergeAgg = (saleAgg: any[], tiktokAgg: any[]) => {
+      const map = new Map(saleAgg.map(a => [a.crewId, { settle: a._sum.settle ?? 0, qty: a._sum.qty ?? 0, count: a._count ?? 0 }]))
+      for (const a of tiktokAgg) {
+        const existing = map.get(a.crewId) || { settle: 0, qty: 0, count: 0 }
+        map.set(a.crewId, {
+          settle: existing.settle + (a._sum.settle ?? 0),
+          qty: existing.qty + (a._sum.qty ?? 0),
+          count: existing.count + (a._count ?? 0),
+        })
+      }
+      return map
+    }
+
+    const monthMap = mergeAgg(monthAgg, tkMonthAgg)
+    const todayMap = mergeAgg(todayAgg, tkTodayAgg)
+    const weekMap = mergeAgg(weekAgg, tkWeekAgg)
+    const allTimeMap = mergeAgg(allTimeAgg, tkAllTimeAgg)
 
     // Struk counts per crew per period
     const [todayStrukRaw, weekStrukRaw, monthStrukRaw, allTimeStrukRaw] = crewIds.length > 0
@@ -172,16 +212,29 @@ export async function GET(request: NextRequest) {
     // Calculate per-week date ranges for all weeks (4 or 5)
     const weekRanges = getWeekRanges(targetYear, targetMonth)
 
-    // Query per-week aggregation for all weeks (dynamic based on how many weeks the month has)
+    // Query per-week aggregation for all weeks (Sale + TikTokSale)
     const weekAggPromises = weekRanges.map(wr =>
-      db.sale.groupBy({
-        by: ['crewId'],
-        where: { crewId: { in: crewIds }, tanggal: { gte: wr.startStr, lt: wr.endNextDayStr } },
-        _sum: { settle: true },
-      })
+      Promise.all([
+        db.sale.groupBy({
+          by: ['crewId'],
+          where: { crewId: { in: crewIds }, tanggal: { gte: wr.startStr, lt: wr.endNextDayStr } },
+          _sum: { settle: true },
+        }),
+        db.tikTokSale.groupBy({
+          by: ['crewId'],
+          where: { crewId: { in: crewIds }, status: { in: ['Pengiriman', 'Selesai'] }, tanggal: { gte: wr.startStr, lt: wr.endNextDayStr } },
+          _sum: { settle: true },
+        }),
+      ])
     )
-    const weekAggResults = crewIds.length > 0 ? await Promise.all(weekAggPromises) : weekRanges.map(() => [])
-    const weekAggMaps = weekAggResults.map(agg => new Map(agg.map(a => [a.crewId, a._sum.settle ?? 0])))
+    const weekAggResults = crewIds.length > 0 ? await Promise.all(weekAggPromises) : weekRanges.map(() => [[], []])
+    const weekAggMaps = weekAggResults.map(([saleAgg, tkAgg]) => {
+      const map = new Map(saleAgg.map((a: any) => [a.crewId, a._sum.settle ?? 0]))
+      for (const a of tkAgg) {
+        map.set(a.crewId, (map.get(a.crewId) ?? 0) + (a._sum.settle ?? 0))
+      }
+      return map
+    })
 
     // Build group info map
     const groupInfoMap = new Map<string, { monthlyTarget: number; crewCount: number; weeklyTargetPcts: number[] }>()
@@ -202,14 +255,14 @@ export async function GET(request: NextRequest) {
       const wAgg = weekMap.get(crew.id)
       const aAgg = allTimeMap.get(crew.id)
 
-      const monthTotal = mAgg?._sum.settle ?? 0
-      const monthQty = mAgg?._sum.qty ?? 0
-      const todayTotal = tAgg?._sum.settle ?? 0
-      const todayQty = tAgg?._sum.qty ?? 0
-      const weekTotal = wAgg?._sum.settle ?? 0
-      const weekQty = wAgg?._sum.qty ?? 0
-      const allTimeTotal = aAgg?._sum.settle ?? 0
-      const allTimeQty = aAgg?._sum.qty ?? 0
+      const monthTotal = mAgg?.settle ?? 0
+      const monthQty = mAgg?.qty ?? 0
+      const todayTotal = tAgg?.settle ?? 0
+      const todayQty = tAgg?.qty ?? 0
+      const weekTotal = wAgg?.settle ?? 0
+      const weekQty = wAgg?.qty ?? 0
+      const allTimeTotal = aAgg?.settle ?? 0
+      const allTimeQty = aAgg?.qty ?? 0
 
       const todayStruk = todayStrukMap.get(crew.id) ?? 0
       const weekStruk = weekStrukMap.get(crew.id) ?? 0
@@ -264,7 +317,7 @@ export async function GET(request: NextRequest) {
         allTimeTotal,
         allTimeQty,
         allTimeStruk,
-        transactionCount: aAgg?._count ?? 0,
+        transactionCount: aAgg?.count ?? 0,
         crewMonthlyTarget,
         crewMonthlyAchievement,
         crewWeeklyTargets,
@@ -301,14 +354,20 @@ export async function GET(request: NextRequest) {
       monthQty: crewStats.reduce((s, c) => s + c.monthQty, 0),
     }
 
-    // Count claimed/unclaimed + imported data per period
-    const [claimedAgg, unclaimedAgg, allSalesAgg, importedTodayAgg, importedWeekAgg, importedMonthAgg] = await Promise.all([
+    // Count claimed/unclaimed + imported data per period (Sale + TikTok)
+    const [claimedAgg, unclaimedAgg, allSalesAgg, importedTodayAgg, importedWeekAgg, importedMonthAgg,
+          tkMonthAgg2, tkTodayAgg2, tkWeekAgg2, tkAllAgg2] = await Promise.all([
       db.sale.count({ where: { crewId: { not: null } } }),
       db.sale.count({ where: { crewId: null } }),
       db.sale.aggregate({ _sum: { settle: true, qty: true } }),
       db.sale.aggregate({ _sum: { settle: true, qty: true }, where: { tanggal: { startsWith: todayStr } } }),
       db.sale.aggregate({ _sum: { settle: true, qty: true }, where: { tanggal: { gte: weekStartStr, lt: weekEndNextDayStr } } }),
       db.sale.aggregate({ _sum: { settle: true, qty: true }, where: { tanggal: { startsWith: monthPrefix } } }),
+      // TikTok totals (Pengiriman + Selesai)
+      db.tikTokSale.aggregate({ _sum: { settle: true, qty: true }, where: { status: { in: ['Pengiriman', 'Selesai'] }, tanggal: { startsWith: todayStr } } }),
+      db.tikTokSale.aggregate({ _sum: { settle: true, qty: true }, where: { status: { in: ['Pengiriman', 'Selesai'] }, tanggal: { gte: weekStartStr, lt: weekEndNextDayStr } } }),
+      db.tikTokSale.aggregate({ _sum: { settle: true, qty: true }, where: { status: { in: ['Pengiriman', 'Selesai'] }, tanggal: { startsWith: monthPrefix } } }),
+      db.tikTokSale.aggregate({ _sum: { settle: true, qty: true }, where: { status: { in: ['Pengiriman', 'Selesai'] } } }),
     ])
 
     // --- Trends (only for current month) ---
@@ -395,8 +454,8 @@ export async function GET(request: NextRequest) {
 
     // Group/Zoning achievements
     const groupAchievements = groups.map(group => {
-      const groupMonthTotal = group.crews.reduce((sum, c) => sum + (monthMap.get(c.id)?._sum.settle ?? 0), 0)
-      const weeklyTotal = group.crews.reduce((sum, c) => sum + (weekMap.get(c.id)?._sum.settle ?? 0), 0)
+      const groupMonthTotal = group.crews.reduce((sum, c) => sum + (monthMap.get(c.id)?.settle ?? 0), 0)
+      const weeklyTotal = group.crews.reduce((sum, c) => sum + (weekMap.get(c.id)?.settle ?? 0), 0)
 
       const weeklyTargetPcts = [group.week1Target, group.week2Target, group.week3Target, group.week4Target, group.week5Target ?? 0]
       let weekTargetPct = weeklyTargetPcts[currentWeek - 1] ?? 0
@@ -471,6 +530,14 @@ export async function GET(request: NextRequest) {
         importedWeekQty: importedWeekAgg._sum.qty ?? 0,
         importedMonth: importedMonthAgg._sum.settle ?? 0,
         importedMonthQty: importedMonthAgg._sum.qty ?? 0,
+        // TikTok totals (Pengiriman + Selesai)
+        tiktokToday: tkTodayAgg2._sum.settle ?? 0,
+        tiktokTodayQty: tkTodayAgg2._sum.qty ?? 0,
+        tiktokWeek: tkWeekAgg2._sum.settle ?? 0,
+        tiktokWeekQty: tkWeekAgg2._sum.qty ?? 0,
+        tiktokMonth: tkMonthAgg2._sum.settle ?? 0,
+        tiktokMonthQty: tkMonthAgg2._sum.qty ?? 0,
+        tiktokAllTime: tkAllAgg2._sum.settle ?? 0,
       },
       trends,
       groupAchievements,

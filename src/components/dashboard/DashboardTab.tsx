@@ -13,7 +13,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import {
   Trophy, Medal, Target, TrendingUp, Users, Star, Zap, ArrowUpRight, ArrowDownRight,
   BarChart3, Calendar, Flame, Clock, Eye, RefreshCw, Upload, ShoppingCart, Package, X,
-  Sun, CloudSun, CloudMoon, Moon, Sparkles, Receipt,
+  Sun, CloudSun, CloudMoon, Moon, Sparkles, Receipt, ShoppingBag,
   ArrowLeftRight, TrendingDown, Minus, CircleDollarSign, CalendarDays, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { fmtRp, fmtNum, fadeIn, stagger, AnimatedCounter, SkeletonRow, AchievementBadge, CircularProgress, monthNames, getWIBDate, timeAgo, getWeekRangesForMonth } from '@/lib/cms-utils'
@@ -456,9 +456,31 @@ const DashboardTab = React.memo(function DashboardTab({
                 </CardContent>
               </Card>
             </motion.div>
-          </div>
 
-          {/* ─── 2-Column Row: Minggu Ini vs Minggu Lalu + Data Insights ─── */}
+            {/* ─── TikTok Card ─── */}
+            <motion.div {...fadeIn} transition={{ delay: 0.18 }}>
+              <Card className="relative overflow-hidden border-0 shadow-lg group cursor-default glass-card">
+                <div className="absolute inset-0 bg-gradient-to-br from-[#E14227]/5 via-[#D4956B]/3 to-[#B87333]/5 group-hover:from-[#E14227]/8 group-hover:via-[#D4956B]/5 group-hover:to-[#B87333]/8 transition-opacity pointer-events-none" />
+                <CardContent className="relative p-4 sm:p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[10px] sm:text-xs font-medium text-muted-foreground">TikTok Bulan Ini</p>
+                        <Badge variant="outline" className="text-[8px] px-1.5 py-0 border-[#E14227]/30 text-[#E14227]">Selesai</Badge>
+                      </div>
+                      <p className="text-base sm:text-xl font-bold tracking-tight">
+                        <AnimatedCounter value={dashboard.totals.tiktokMonth ?? 0} prefix="Rp" />
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">{fmtNum(dashboard.totals.tiktokMonthQty ?? 0)} items · Minggu: {fmtRp(dashboard.totals.tiktokWeek ?? 0)}</p>
+                    </div>
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#E14227] to-[#D4956B] shadow-lg shadow-[#E14227]/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <ShoppingBag className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           {isCurrentMonth && dashboard.lastWeekTotals && (
             <motion.div {...fadeIn} transition={{ delay: 0.25 }}>
