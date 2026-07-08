@@ -16,11 +16,14 @@ import {
   Package, PartyPopper, FileSpreadsheet, Edit2, X,
   ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight,
   SlidersHorizontal, ChevronDown, Zap, Trophy, BarChart3,
+  Pencil, RotateCcw, Loader2,
 } from 'lucide-react'
 import { fmtRp, fmtNum, fadeIn, stagger, AnimatedCounter, SkeletonRow, timeAgo, getDeptColor, getPageNumbers, getWeekRange, getMonthRange } from '@/lib/cms-utils'
 import type { ClaimSale, Crew } from '@/lib/cms-types'
+import { toast } from 'sonner'
 import UploadModal from '@/components/modals/UploadModal'
 import LoadingOverlay from '@/components/ui/LoadingOverlay'
+import BulkEditDialog from '@/components/claims/BulkEditDialog'
 
 // Lightweight count-up animator for ClaimsTab
 const CountUp = ({ value, format }: { value: number; format: (n: number) => string }) => {
@@ -182,6 +185,34 @@ interface ClaimsTabProps {
 }
 
 const ClaimsTab = React.memo(function ClaimsTab(props: ClaimsTabProps) {
+  // Bulk edit dialog state (self-contained, no extra props needed)
+  const [showBulkEdit, setShowBulkEdit] = useState(false)
+  const [bulkUnclaiming, setBulkUnclaiming] = useState(false)
+
+  const handleBulkUnclaim = async () => {
+    if (batchSelectedIds.size === 0) return
+    setBulkUnclaiming(true)
+    try {
+      const res = await fetch('/api/claims/bulk-unclaim', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ saleIds: Array.from(batchSelectedIds) }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Gagal')
+      if (data.updated > 0) {
+        toast.success(`✅ ${data.updated} penjualan berhasil di-unclaim`)
+      } else {
+        toast.info('Tidak ada penjualan yang di-unclaim')
+      }
+      setBatchSelectedIds(new Set())
+      fetchClaims(claimPage)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Gagal unclaim')
+    } finally {
+      setBulkUnclaiming(false)
+    }
+  }
   const {
     claimSales, claimTotal, claimTotalPages, claimPage, claimSearch,
     claimDateFrom, claimDateTo, claimFilterProgram, claimFilterCrew, claimShowClaimed,
@@ -546,10 +577,23 @@ const ClaimsTab = React.memo(function ClaimsTab(props: ClaimsTabProps) {
                     <Button variant="outline" size="sm" className="h-8 gap-1.5 text-[#E14227] border-[#E6BAA3] hover:bg-[#F0D5C5] dark:text-[#F07050] dark:border-[#B8321E] dark:hover:bg-[#B8321E]/30" onClick={handleExport}>
                       <Download className="w-3.5 h-3.5" /> Export CSV
                     </Button>
-                    {isAdmin && batchSelectedIds.size > 0 && (
-                      <Button variant="destructive" size="sm" className="h-8 gap-1.5" onClick={() => setDeleteConfirm({ type: 'batch-sale', ids: Array.from(batchSelectedIds), name: `${batchSelectedIds.size} data terpilih` })}>
-                        <Trash2 className="w-3.5 h-3.5" /> Hapus ({batchSelectedIds.size})
-                      </Button>
+                    {isAdmin && (batchSelectedIds.size > 0 || selectedSaleIds.size > 0) && (
+                      <>
+                        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-[#E14227] border-[#E6BAA3] hover:bg-[#F0D5C5] dark:text-[#F07050] dark:border-[#B8321E] dark:hover:bg-[#B8321E]/30" onClick={() => setShowBulkEdit(true)}>
+                          <Pencil className="w-3.5 h-3.5" /> Edit ({batchSelectedIds.size || selectedSaleIds.size})
+                        </Button>
+                        {batchSelectedIds.size > 0 && (
+                          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-amber-600 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-700 dark:hover:bg-amber-950/30" onClick={handleBulkUnclaim} disabled={bulkUnclaiming}>
+                            {bulkUnclaiming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Unclaim ({batchSelectedIds.size})
+                          </Button>
+                        )}
+                        <Button variant="destructive" size="sm" className="h-8 gap-1.5" onClick={() => {
+                          const ids = Array.from(batchSelectedIds.size > 0 ? batchSelectedIds : selectedSaleIds)
+                          setDeleteConfirm({ type: 'batch-sale', ids, name: `${ids.length} data terpilih` })
+                        }}>
+                          <Trash2 className="w-3.5 h-3.5" /> Hapus ({batchSelectedIds.size || selectedSaleIds.size})
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1389,6 +1433,60 @@ const ClaimsTab = React.memo(function ClaimsTab(props: ClaimsTabProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Admin Batch Action Floating Bar ── */}
+      <AnimatePresence>
+        {isAdmin && (batchSelectedIds.size > 0 || selectedSaleIds.size > 0) && !(selectedSaleIds.size > 0 && selectedClaimCrewId) && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            className="fixed bottom-16 sm:bottom-5 left-0 right-0 z-40 px-3 sm:px-6"
+          >
+            <div className="max-w-md mx-auto glass-card rounded-2xl p-3 sm:p-4 shadow-xl border border-[#E6BAA3]/30 dark:border-[#B8321E]/20">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <div className="w-5 h-5 rounded-md bg-gradient-to-br from-[#E14227] to-[#9DB1CC] flex items-center justify-center">
+                      <span className="text-[9px] font-bold text-white">{batchSelectedIds.size || selectedSaleIds.size}</span>
+                    </div>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">dipilih (admin)</p>
+                  </div>
+                </div>
+                <Button size="sm" className="h-9 gap-1.5 bg-gradient-to-r from-[#E14227] to-[#9DB1CC] hover:from-[#B8321E] hover:to-[#7E95B3] text-white shadow-md text-xs font-bold" onClick={() => setShowBulkEdit(true)}>
+                  <Pencil className="w-3.5 h-3.5" /> Edit
+                </Button>
+                {batchSelectedIds.size > 0 && (
+                  <Button size="sm" variant="outline" className="h-9 gap-1.5 text-amber-600 border-amber-300 text-xs" onClick={handleBulkUnclaim} disabled={bulkUnclaiming}>
+                    {bulkUnclaiming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><RotateCcw className="w-3.5 h-3.5" /> Unclaim</>}
+                  </Button>
+                )}
+                <Button size="sm" variant="destructive" className="h-9 gap-1.5 text-xs" onClick={() => {
+                  const ids = Array.from(batchSelectedIds.size > 0 ? batchSelectedIds : selectedSaleIds)
+                  setDeleteConfirm({ type: 'batch-sale', ids, name: `${ids.length} data terpilih` })
+                }}>
+                  <Trash2 className="w-3.5 h-3.5" /> Hapus
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Bulk Edit Dialog ── */}
+      <BulkEditDialog
+        open={showBulkEdit}
+        onClose={() => setShowBulkEdit(false)}
+        saleIds={Array.from(batchSelectedIds.size > 0 ? batchSelectedIds : selectedSaleIds)}
+        onSuccess={() => {
+          setBatchSelectedIds(new Set())
+          setSelectedSaleIds(new Set())
+          fetchClaims(claimPage)
+        }}
+        crews={crews}
+        programs={programs}
+      />
     </TabsContent>
   )
 })
