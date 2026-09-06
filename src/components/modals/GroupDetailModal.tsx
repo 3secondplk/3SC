@@ -5,9 +5,91 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { X, Users, Package, DollarSign, ShoppingCart, Layers, Percent, Target, Eye } from 'lucide-react'
+import { X, Users, Package, DollarSign, ShoppingCart, Layers, Percent, Target, Eye, Receipt, BarChart3 } from 'lucide-react'
 import { fmtRp, fmtNum } from '@/lib/cms-utils'
 import type { GroupAchievement, GroupDetailData } from '@/lib/cms-types'
+
+// ─── Detail Report Summary — Penjualan Brand & Dept per Zoning ───
+// Isolated per zoning (modal ini), berdasarkan CLAIM penjualan crew.
+function ZoningReportSummary({ data, loading, groupName }: { data: GroupDetailData | null; loading: boolean; groupName: string }) {
+  if (loading || !data) {
+    return (
+      <div className="rounded-xl border border-border/40 overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2.5 bg-gradient-to-r from-[#9DB1CC]/10 to-transparent border-b border-border/40">
+          <div className="w-6 h-6 rounded-md bg-muted animate-pulse" />
+          <div className="h-3 w-40 bg-muted rounded animate-pulse" />
+        </div>
+        <div className="p-3 space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-7 bg-muted/70 rounded-lg animate-pulse" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const hasRows = data.reportSummary.rows.length > 0
+  return (
+    <div className="rounded-xl border border-border/40 dark:border-border/20 overflow-hidden bg-white/40 dark:bg-gray-900/20">
+      {/* Section header */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2.5 bg-gradient-to-r from-[#9DB1CC]/15 via-[#E14227]/5 to-transparent border-b border-border/40 dark:border-border/20">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-6 h-6 shrink-0 rounded-md bg-gradient-to-br from-[#9DB1CC] to-[#B8321E] flex items-center justify-center shadow-sm">
+            <Receipt className="w-3 h-3 text-white" />
+          </div>
+          <div className="min-w-0">
+            <h4 className="text-xs font-bold text-foreground truncate leading-tight">Report Summary — Brand &amp; Dept</h4>
+            <p className="text-[9px] text-muted-foreground truncate">Penjualan per Brand &amp; Dept &bull; klaim crew &bull; {data.period}</p>
+          </div>
+        </div>
+        {hasRows && (
+          <span className="text-[9px] text-muted-foreground tabular-nums shrink-0">
+            {data.reportSummary.rows.length} item &bull; Qty <b className="text-foreground">{fmtNum(data.reportSummary.totalQty)}</b>
+          </span>
+        )}
+      </div>
+
+      {hasRows ? (
+        <div className="max-h-72 overflow-y-auto">
+          <Table className="table-sticky-head">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-8 text-[9px] uppercase tracking-wider">#</TableHead>
+                <TableHead className="text-[9px] uppercase tracking-wider">Brand</TableHead>
+                <TableHead className="text-[9px] uppercase tracking-wider">Dept</TableHead>
+                <TableHead className="text-right text-[9px] uppercase tracking-wider">Qty</TableHead>
+                <TableHead className="text-right text-[9px] uppercase tracking-wider">Netto</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.reportSummary.rows.map((r, i) => (
+                <TableRow key={`${r.brand}-${r.dept}-${i}`} className="transition-colors hover:bg-muted/30">
+                  <TableCell className="text-[9px] text-muted-foreground/60 tabular-nums">{i + 1}</TableCell>
+                  <TableCell className="text-[11px] font-bold max-w-[110px] truncate">{r.brand}</TableCell>
+                  <TableCell className="text-[11px] max-w-[130px] truncate">{r.dept}</TableCell>
+                  <TableCell className="text-[11px] text-right tabular-nums">{fmtNum(r.qty)}</TableCell>
+                  <TableCell className="text-[11px] text-right font-bold text-[#E14227] tabular-nums">{fmtRp(r.netto)}</TableCell>
+                </TableRow>
+              ))}
+              {/* Zoning total footer */}
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableCell colSpan={3} className="text-[11px] font-bold">Total {groupName}</TableCell>
+                <TableCell className="text-[11px] text-right tabular-nums font-bold">{fmtNum(data.reportSummary.totalQty)}</TableCell>
+                <TableCell className="text-[11px] text-right tabular-nums font-bold text-[#E14227]">{fmtRp(data.reportSummary.totalNetto)}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      ) : (
+        <div className="py-6 text-center">
+          <BarChart3 className="w-7 h-7 text-muted-foreground/40 mx-auto mb-1.5" />
+          <p className="text-xs text-muted-foreground">Belum ada penjualan crew yang diklaim pada periode ini</p>
+          <p className="text-[10px] text-muted-foreground/60 mt-0.5">Summary hanya menghitung penjualan yang sudah diklaim crew</p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface GroupDetailModalProps {
   selectedGroupDetail: GroupAchievement | null
@@ -119,6 +201,9 @@ export default function GroupDetailModal({
                       </motion.div>
                     ))}
                   </div>
+
+                  {/* ── Detail Report Summary: Brand & Dept (isolated per zoning) ── */}
+                  <ZoningReportSummary data={groupDetailData} loading={groupDetailLoading} groupName={selectedGroupDetail.name} />
 
                   {/* ── Target Per Crew (collapsed) ── */}
                   {(groupDetailData.crewMonthlyTarget > 0) && (
@@ -388,6 +473,9 @@ export default function GroupDetailModal({
                       </motion.div>
                     ))}
                   </div>
+
+                  {/* ── Detail Report Summary: Brand & Dept (isolated per zoning) ── */}
+                  <ZoningReportSummary data={groupDetailData} loading={groupDetailLoading} groupName={selectedGroupDetail.name} />
 
                   {/* Crew List */}
                   <div>

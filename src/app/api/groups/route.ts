@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth, unauthorized } from '@/lib/auth'
+import { resolveWeekTargets } from '@/lib/week-targets'
 import { logActivity } from '@/lib/activity-logger'
 
 // Helper: get week number (1-5)
@@ -71,9 +72,12 @@ export async function GET() {
       })
       const weeklyTotal = weekSales.reduce((sum, s) => sum + s.settle, 0)
 
-      const weeklyTargetPcts = [group.week1Target, group.week2Target, group.week3Target, group.week4Target, group.week5Target ?? 0]
-      const weekTargetPct = weeklyTargetPcts[currentWeek - 1] ?? 0
-      const weeklyAchievement = weekTargetPct > 0 ? (weeklyTotal / (monthlyTarget * weekTargetPct / 100)) * 100 : 0
+      // Auto-detect pct vs nominal week targets (see lib/week-targets.ts)
+      const wt = resolveWeekTargets(monthlyTarget, [
+        group.week1Target, group.week2Target, group.week3Target, group.week4Target, group.week5Target ?? 0,
+      ])
+      const weekTargetAmount = wt.amounts[currentWeek - 1] ?? 0
+      const weeklyAchievement = weekTargetAmount > 0 ? (weeklyTotal / weekTargetAmount) * 100 : 0
 
       return {
         ...group,
@@ -84,7 +88,7 @@ export async function GET() {
         weeklyTotal,
         weeklyAchievement,
         currentWeek,
-        currentWeekTarget: weekTargetPct,
+        currentWeekTarget: weekTargetAmount,
       }
     })
 

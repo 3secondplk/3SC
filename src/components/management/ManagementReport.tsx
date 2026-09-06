@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/select'
 import {
   DollarSign, Hash, ShoppingCart, TrendingUp, Search, Download, X,
-  ChevronLeft, ChevronRight, CalendarDays, FileSpreadsheet, BarChart3, Users, Filter,
+  ChevronLeft, ChevronRight, CalendarDays, FileSpreadsheet, Users, Filter,
 } from 'lucide-react'
 import { fmtRp, fmtNum, fadeIn, stagger, safeFetch, getWIBToday, getWeekRange, getMonthRange, getPageNumbers } from '@/lib/cms-utils'
 import type { Crew, Group } from '@/lib/cms-types'
@@ -127,13 +127,14 @@ const ManagementReport = React.memo(function ManagementReport({
   const queryParams = useMemo(() => {
     const params = new URLSearchParams()
     if (effectiveCrewId) params.set('crewId', effectiveCrewId)
+    if (selectedGroupId) params.set('groupId', selectedGroupId)
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
     if (debouncedSearch) params.set('search', debouncedSearch)
     params.set('page', String(page))
     params.set('limit', '50')
     return params.toString()
-  }, [effectiveCrewId, dateFrom, dateTo, debouncedSearch, page])
+  }, [effectiveCrewId, selectedGroupId, dateFrom, dateTo, debouncedSearch, page])
 
   // ─── Fetch report data ───
   const fetchReport = useCallback(async () => {
@@ -290,6 +291,21 @@ const ManagementReport = React.memo(function ManagementReport({
             </Card>
           ))}
         </div>
+
+        {/* Zoning summary skeleton */}
+        <Card className="border-0 shadow-lg glass-card">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-8 w-8 rounded-lg" />
+              <div className="space-y-1.5">
+                <Skeleton className="h-3.5 w-44 rounded" />
+                <Skeleton className="h-2.5 w-64 rounded" />
+              </div>
+            </div>
+            <Skeleton className="h-24 w-full rounded-xl" />
+            <Skeleton className="h-24 w-full rounded-xl" />
+          </CardContent>
+        </Card>
 
         {/* Table skeleton */}
         <Card className="border-0 shadow-lg glass-card">

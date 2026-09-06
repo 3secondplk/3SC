@@ -760,8 +760,8 @@ const DashboardTab = React.memo(function DashboardTab({
                       {/* ─── 2nd Place ─── */}
                       {top3Crews[1] && (() => {
                         const crew = top3Crews[1]
-                        const periodVal = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
-                        const periodQty = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
+                        const periodVal = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
+                        const periodQty = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
                         const { value: targetVal, label: targetLabel, pct: targetPct } = getPeriodTarget(crew)
                         return (
                           <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, type: 'spring', stiffness: 180 }}
@@ -800,8 +800,8 @@ const DashboardTab = React.memo(function DashboardTab({
                               {/* Juara label */}
                               <span className="relative z-10 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-[#7E95B3] dark:text-[#B5C7DB] bg-[#B5C7DB]/70 dark:bg-[#262627]/60 px-2 py-0.5 rounded-full">Juara 2</span>
                               <div className="relative z-10 flex flex-col items-center">
-                                <span className="text-[10px] sm:text-xs font-bold text-[#7E95B3] dark:text-[#B5C7DB]">{isAchievement ? `${Math.round(periodVal)}%` : fmtRp(periodVal)}</span>
-                                <span className="text-[9px] text-[#7E95B3] dark:text-[#9DB1CC]">{isAchievement ? fmtRp(periodQty) : `${fmtNum(periodQty)} qty`}</span>
+                                <span className="text-[10px] sm:text-xs font-bold text-[#7E95B3] dark:text-[#B5C7DB]">{fmtRp(periodVal)}</span>
+                                <span className="text-[9px] text-[#7E95B3] dark:text-[#9DB1CC]">{isAchievement ? `${Math.round(periodQty)}%` : `${fmtNum(periodQty)} qty`}</span>
                               </div>
                             </div>
                           </motion.div>
@@ -811,8 +811,8 @@ const DashboardTab = React.memo(function DashboardTab({
                       {/* ─── 1st Place (center, tallest) ─── */}
                       {top3Crews[0] && (() => {
                         const crew = top3Crews[0]
-                        const periodVal = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
-                        const periodQty = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
+                        const periodVal = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
+                        const periodQty = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
                         const { value: targetVal, label: targetLabel, pct: targetPct } = getPeriodTarget(crew)
                         return (
                           <motion.div initial={{ opacity: 0, scale: 0.8, y: 50 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ delay: 0.1, type: 'spring', stiffness: 150, damping: 12 }}
@@ -860,8 +860,8 @@ const DashboardTab = React.memo(function DashboardTab({
                               {/* Vermillion-accented Juara 1 label */}
                               <span className="relative z-10 text-[10px] sm:text-xs font-black uppercase tracking-wider text-[#B8321E] dark:text-[#F0D5C5] bg-white/70 dark:bg-[#1A1A1B]/50 px-2.5 py-0.5 rounded-full shadow-sm">Juara 1</span>
                               <div className="relative z-10 flex flex-col items-center">
-                                <span className="text-xs sm:text-sm font-bold text-white drop-shadow">{isAchievement ? `${Math.round(periodVal)}%` : fmtRp(periodVal)}</span>
-                                <span className="text-[9px] text-[#F0D5C5]">{isAchievement ? fmtRp(periodQty) : `${fmtNum(periodQty)} qty`}</span>
+                                <span className="text-xs sm:text-sm font-bold text-white drop-shadow">{fmtRp(periodVal)}</span>
+                                <span className="text-[9px] text-[#F0D5C5]">{isAchievement ? `${Math.round(periodQty)}%` : `${fmtNum(periodQty)} qty`}</span>
                               </div>
                             </div>
                           </motion.div>
@@ -871,8 +871,8 @@ const DashboardTab = React.memo(function DashboardTab({
                       {/* ─── 3rd Place ─── */}
                       {top3Crews[2] && (() => {
                         const crew = top3Crews[2]
-                        const periodVal = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
-                        const periodQty = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
+                        const periodVal = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
+                        const periodQty = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
                         const { value: targetVal, label: targetLabel, pct: targetPct } = getPeriodTarget(crew)
                         return (
                           <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, type: 'spring', stiffness: 180 }}
@@ -911,8 +911,8 @@ const DashboardTab = React.memo(function DashboardTab({
                               {/* Juara label */}
                               <span className="relative z-10 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-[#B8321E] dark:text-[#F0D5C5] bg-[#F0D5C5]/70 dark:bg-[#1A1A1B]/50 px-2 py-0.5 rounded-full">Juara 3</span>
                               <div className="relative z-10 flex flex-col items-center">
-                                <span className="text-[10px] sm:text-xs font-bold text-[#B8321E] dark:text-[#F0D5C5]">{isAchievement ? `${Math.round(periodVal)}%` : fmtRp(periodVal)}</span>
-                                <span className="text-[9px] text-[#B8321E] dark:text-[#E6BAA3]">{isAchievement ? fmtRp(periodQty) : `${fmtNum(periodQty)} qty`}</span>
+                                <span className="text-[10px] sm:text-xs font-bold text-[#B8321E] dark:text-[#F0D5C5]">{fmtRp(periodVal)}</span>
+                                <span className="text-[9px] text-[#B8321E] dark:text-[#E6BAA3]">{isAchievement ? `${Math.round(periodQty)}%` : `${fmtNum(periodQty)} qty`}</span>
                               </div>
                             </div>
                           </motion.div>
@@ -927,8 +927,8 @@ const DashboardTab = React.memo(function DashboardTab({
                   {/* Performance highlight bar for top crew */}
                   {top3Crews[0] && (() => {
                     const topCrew = top3Crews[0]
-                    const periodVal = isAchievement ? topCrew.crewMonthlyAchievement : leaderboardView === 'today' ? topCrew.todayTotal : leaderboardView === 'week' ? topCrew.weekTotal : topCrew.monthTotal
-                    const totalAllCrews = displayCrewStats.reduce((s, c) => s + (isAchievement ? c.crewMonthlyAchievement : leaderboardView === 'today' ? c.todayTotal : leaderboardView === 'week' ? c.weekTotal : c.monthTotal), 0)
+                    const periodVal = isAchievement ? topCrew.monthTotal : leaderboardView === 'today' ? topCrew.todayTotal : leaderboardView === 'week' ? topCrew.weekTotal : topCrew.monthTotal
+                    const totalAllCrews = displayCrewStats.reduce((s, c) => s + (isAchievement ? c.monthTotal : leaderboardView === 'today' ? c.todayTotal : leaderboardView === 'week' ? c.weekTotal : c.monthTotal), 0)
                     const sharePct = totalAllCrews > 0 ? Math.round((periodVal / totalAllCrews) * 100) : 0
                     return (
                       <div className="mb-4 px-4 py-3 rounded-xl bg-gradient-to-r from-[#F0EAD6] to-[#F0D5C5] dark:from-[#1A1A1B]/30 dark:to-[#1A1A1B]/20 border border-[#E6BAA3]/50 dark:border-[#B8321E]/30">
@@ -936,7 +936,9 @@ const DashboardTab = React.memo(function DashboardTab({
                           <span className="text-sm">🏆</span>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium text-[#B8321E] dark:text-[#F0D5C5]">
-                              <span className="font-bold">{topCrew.name}</span> {isAchievement ? 'memimpin dengan pencapaian' : 'memimpin dengan kontribusi'} <span className="font-bold">{sharePct}%</span> {isAchievement ? 'dari total pencapaian' : 'dari total penjualan'}
+                              <span className="font-bold">{topCrew.name}</span> {isAchievement
+                                ? <>memimpin dengan pencapaian <span className="font-bold">{Math.round(topCrew.crewMonthlyAchievement)}%</span> &bull; kontribusi <span className="font-bold">{sharePct}%</span> dari total penjualan</>
+                                : <>memimpin dengan kontribusi <span className="font-bold">{sharePct}%</span> dari total penjualan</>}
                             </p>
                             <div className="mt-1.5 h-2 bg-[#E6BAA3]/50 dark:bg-[#1A1A1B]/30 rounded-full overflow-hidden">
                               <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(sharePct, 100)}%` }} transition={{ duration: 1, ease: 'easeOut', delay: 0.5 }}
@@ -944,8 +946,8 @@ const DashboardTab = React.memo(function DashboardTab({
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-sm font-bold text-[#B8321E] dark:text-[#F07050]">{isAchievement ? `${Math.round(periodVal)}%` : fmtRp(periodVal)}</p>
-                            <p className="text-[10px] text-[#B8321E]/70 dark:text-[#E14227]/70">{isAchievement ? `achievement bulanan` : `dari ${fmtRp(totalAllCrews)}`}</p>
+                            <p className="text-sm font-bold text-[#B8321E] dark:text-[#F07050]">{fmtRp(periodVal)}</p>
+                            <p className="text-[10px] text-[#B8321E]/70 dark:text-[#E14227]/70">{isAchievement ? `${Math.round(topCrew.crewMonthlyAchievement)}% achievement bulanan` : `dari ${fmtRp(totalAllCrews)}`}</p>
                           </div>
                         </div>
                       </div>
@@ -964,8 +966,8 @@ const DashboardTab = React.memo(function DashboardTab({
                     {/* Mobile Card View */}
                     <div className="md:hidden max-h-80 overflow-y-auto space-y-2 pr-1">
                       {displayCrewStats.map((crew, idx) => {
-                        const periodVal = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
-                        const periodQty = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
+                        const periodVal = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
+                        const periodQty = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
                         const maxVal = displayCrewStats[0] ? (isAchievement ? displayCrewStats[0].crewMonthlyAchievement : leaderboardView === 'today' ? displayCrewStats[0].todayTotal : leaderboardView === 'week' ? displayCrewStats[0].weekTotal : displayCrewStats[0].monthTotal) : 1
                         const pct = maxVal > 0 ? Math.round((periodVal / maxVal) * 100) : 0
                         const rankMedal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
@@ -1010,8 +1012,8 @@ const DashboardTab = React.memo(function DashboardTab({
                                 )}
                               </div>
                               <div className="text-right shrink-0 pl-2">
-                                <p className={`text-xs font-bold ${idx < 3 ? 'text-[#B8321E] dark:text-[#F07050]' : 'text-[#B2AC88] dark:text-[#B2AC88]'}`}>{isAchievement ? `${Math.round(periodVal)}%` : fmtRp(periodVal)}</p>
-                                <p className="text-[10px] text-muted-foreground">{isAchievement ? fmtRp(periodQty) : `${fmtNum(periodQty)} qty`}</p>
+                                <p className={`text-xs font-bold ${idx < 3 ? 'text-[#B8321E] dark:text-[#F07050]' : 'text-[#B2AC88] dark:text-[#B2AC88]'}`}>{fmtRp(periodVal)}</p>
+                                <p className="text-[10px] text-muted-foreground">{isAchievement ? `${Math.round(periodQty)}%` : `${fmtNum(periodQty)} qty`}</p>
                               </div>
                             </div>
                           </motion.div>
@@ -1027,14 +1029,14 @@ const DashboardTab = React.memo(function DashboardTab({
                             <TableHead>Crew</TableHead>
                             <TableHead>Group</TableHead>
                             <TableHead className="text-center">{isAchievement ? 'Achievement' : 'Qty'}</TableHead>
-                            <TableHead className="w-[220px]">{isAchievement ? 'Achievement' : 'Progress Target'}</TableHead>
-                            <TableHead className="text-right">{isAchievement ? 'Pencapaian' : 'Penjualan'}</TableHead>
+                            <TableHead className="w-[220px]">{isAchievement ? 'Progress' : 'Progress Target'}</TableHead>
+                            <TableHead className="text-right">Penjualan</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {displayCrewStats.map((crew, idx) => {
-                            const periodVal = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
-                            const periodQty = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
+                            const periodVal = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
+                            const periodQty = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
                             const maxVal = displayCrewStats[0] ? (isAchievement ? displayCrewStats[0].crewMonthlyAchievement : leaderboardView === 'today' ? displayCrewStats[0].todayTotal : leaderboardView === 'week' ? displayCrewStats[0].weekTotal : displayCrewStats[0].monthTotal) : 1
                             const pct = maxVal > 0 ? Math.round((periodVal / maxVal) * 100) : 0
                             const rankMedal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
@@ -1080,7 +1082,7 @@ const DashboardTab = React.memo(function DashboardTab({
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <span className={`font-semibold tabular-nums ${idx < 3 ? 'text-[#B8321E] dark:text-[#F07050]' : ''}`}>{isAchievement ? `${Math.round(periodVal)}%` : fmtRp(periodVal)}</span>
+                                  <span className={`font-semibold tabular-nums ${idx < 3 ? 'text-[#B8321E] dark:text-[#F07050]' : ''}`}>{fmtRp(periodVal)}</span>
                                 </TableCell>
                               </TableRow>
                             )
@@ -1163,7 +1165,7 @@ const DashboardTab = React.memo(function DashboardTab({
                                         )}
                                       </div>
                                       <span className={`text-[8px] font-semibold tabular-nums ${wd.week === g.currentWeek ? 'text-[#E14227]' : 'text-muted-foreground'}`}>
-                                        W{wd.week}
+                                        W{wd.week} · {wd.achievement}%
                                       </span>
                                     </div>
                                   ))}
@@ -1353,7 +1355,7 @@ const DashboardTab = React.memo(function DashboardTab({
                 <CardHeader className="pb-2 sm:pb-3">
                   <div className="flex items-center gap-2">
                     <BarChart3 className="w-5 h-5 text-[#E14227]" />
-                    <CardTitle className="text-sm sm:text-base">{isAchievement ? 'Achievement per Crew' : 'Penjualan per Crew'}</CardTitle>
+                    <CardTitle className="text-sm sm:text-base">Penjualan per Crew</CardTitle>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1362,13 +1364,13 @@ const DashboardTab = React.memo(function DashboardTab({
                       <ResponsiveContainer width="100%" height="100%" minHeight={192}>
                         <BarChart data={displayCrewStats.map(c => ({
                           name: c.name.split(' ')[0],
-                          value: isAchievement ? Math.round(c.crewMonthlyAchievement * 10) / 10 : leaderboardView === 'today' ? c.todayTotal : leaderboardView === 'week' ? c.weekTotal : c.monthTotal,
-                          qty: isAchievement ? c.monthTotal : leaderboardView === 'today' ? c.todayQty : leaderboardView === 'week' ? c.weekQty : c.monthQty,
+                          value: leaderboardView === 'today' ? c.todayTotal : leaderboardView === 'week' ? c.weekTotal : c.monthTotal,
+                          qty: leaderboardView === 'today' ? c.todayQty : leaderboardView === 'week' ? c.weekQty : c.monthQty,
                         }))} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                           <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={40} />
-                          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => isAchievement ? `${v}%` : v >= 1000000 ? `${(v / 1000000).toFixed(0)}jt` : v >= 1000 ? `${(v / 1000).toFixed(0)}rb` : String(v)} />
-                          <Tooltip formatter={(value) => isAchievement ? `${Number(value)}%` : fmtRp(Number(value))} labelStyle={{ fontWeight: 600 }} contentStyle={{ borderRadius: 12, border: '1px solid #F0EAD6', fontSize: 12 }} />
+                          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => v >= 1000000 ? `${(v / 1000000).toFixed(0)}jt` : v >= 1000 ? `${(v / 1000).toFixed(0)}rb` : String(v)} />
+                          <Tooltip formatter={(value) => fmtRp(Number(value))} labelStyle={{ fontWeight: 600 }} contentStyle={{ borderRadius: 12, border: '1px solid #F0EAD6', fontSize: 12 }} />
                           <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={36}>
                             {displayCrewStats.map((_, idx) => (
                               <Cell key={idx} fill={idx === 0 ? '#E14227' : idx === 1 ? '#9DB1CC' : idx === 2 ? '#B2AC88' : idx === 3 ? '#E6BAA3' : '#D4956B'} />

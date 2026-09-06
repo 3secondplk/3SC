@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { resolveWeekTargets } from '@/lib/week-targets'
 
 // Helper: get week number (1-5) based on day of month
 function getWeekNumber(dayOfMonth: number, daysInMonth: number): number {
@@ -282,7 +283,9 @@ export async function GET(request: NextRequest) {
       const weeklyPcts = gInfo?.weeklyTargetPcts ?? [0, 0, 0, 0, 0]
 
       const crewMonthlyTarget = crewCount > 0 ? Math.round(groupMonthlyTarget / crewCount) : 0
-      const crewWeeklyTargets = weeklyPcts.map(pct => Math.round((crewMonthlyTarget * pct) / 100))
+      // Auto-detect pct vs nominal week targets (see lib/week-targets.ts)
+      const crewWt = resolveWeekTargets(groupMonthlyTarget, weeklyPcts)
+      const crewWeeklyTargets = crewWt.amounts.map(amount => crewCount > 0 ? Math.round(amount / crewCount) : 0)
       const crewCurrentWeekTarget = crewWeeklyTargets[currentWeek - 1] ?? 0
       const crewMonthlyAchievement = crewMonthlyTarget > 0 ? Math.min(Math.round((monthTotal / crewMonthlyTarget) * 100), 999) : 0
       const crewWeeklyAchievement = crewCurrentWeekTarget > 0 ? Math.min(Math.round((weekTotal / crewCurrentWeekTarget) * 100), 999) : 0
@@ -294,7 +297,7 @@ export async function GET(request: NextRequest) {
         const achievement = weekTarget > 0 ? Math.min(Math.round((weekTotalForCrew / weekTarget) * 100), 999) : 0
         return {
           week: wr.week,
-          targetPct: weeklyPcts[i],
+          targetPct: crewWt.pcts[i],
           target: weekTarget,
           total: weekTotalForCrew,
           achievement,
@@ -474,25 +477,29 @@ export async function GET(request: NextRequest) {
       const groupMonthTotal = group.crews.reduce((sum, c) => sum + (monthMap.get(c.id)?.settle ?? 0), 0)
       const weeklyTotal = group.crews.reduce((sum, c) => sum + (weekMap.get(c.id)?.settle ?? 0), 0)
 
-      const weeklyTargetPcts = [group.week1Target, group.week2Target, group.week3Target, group.week4Target, group.week5Target ?? 0]
+      // Auto-detect pct vs nominal week targets (see lib/week-targets.ts)
+      const wt = resolveWeekTargets(group.monthlyTarget, [
+        group.week1Target, group.week2Target, group.week3Target, group.week4Target, group.week5Target ?? 0,
+      ])
+      const weeklyTargetPcts = wt.pcts
       let weekTargetPct = weeklyTargetPcts[currentWeek - 1] ?? 0
 
       const monthlyAchievement = group.monthlyTarget > 0
         ? Math.min((groupMonthTotal / group.monthlyTarget) * 100, 100)
         : 0
-      const weeklyTarget = group.monthlyTarget * (weekTargetPct / 100)
+      const weeklyTarget = wt.amounts[currentWeek - 1] ?? 0
       const weeklyAchievement = weeklyTarget > 0
         ? Math.min((weeklyTotal / weeklyTarget) * 100, 100)
         : 0
 
       const crewCount = group.crews.length
       const crewMonthlyTarget = crewCount > 0 ? Math.round(group.monthlyTarget / crewCount) : 0
-      const crewWeeklyTargets = weeklyTargetPcts.map(pct => Math.round((crewMonthlyTarget * pct) / 100))
+      const crewWeeklyTargets = wt.amounts.map(amount => crewCount > 0 ? Math.round(amount / crewCount) : 0)
 
       // Per-week achievements
       const weeklyDetails = weekRanges.map((wr, i) => {
         const targetPct = weeklyTargetPcts[i]
-        const weekTarget = group.monthlyTarget * (targetPct / 100)
+        const weekTarget = wt.amounts[i] ?? 0
         const weekTotal = group.crews.reduce((sum, c) => sum + (weekAggMaps[i].get(c.id) ?? 0), 0)
         const weekTiktok = group.crews.reduce((sum, c) => sum + (tkWeekOnlyMaps[i].get(c.id) ?? 0), 0)
         const achievement = weekTarget > 0 ? Math.min(Math.round((weekTotal / weekTarget) * 100), 999) : 0

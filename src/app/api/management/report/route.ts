@@ -27,13 +27,13 @@ export async function GET(request: NextRequest) {
     // Search across kodeExtend, brand, dept (case-insensitive)
     if (search) {
       const searchConditions: Record<string, unknown>[] = [
-        { kodeExtend: { contains: search, mode: 'insensitive' } },
-        { brand: { contains: search, mode: 'insensitive' } },
-        { dept: { contains: search, mode: 'insensitive' } },
+        { kodeExtend: { contains: search } },
+        { brand: { contains: search } },
+        { dept: { contains: search } },
       ]
       // If searching within a specific crew, also search crew name
       if (crewId) {
-        searchConditions.push({ crew: { name: { contains: search, mode: 'insensitive' } } })
+        searchConditions.push({ crew: { name: { contains: search } } })
       }
       where.OR = searchConditions
     }

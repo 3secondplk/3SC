@@ -136,6 +136,12 @@ export interface GroupDetailData {
   weeklyTargetPcts: number[] // [W1%, W2%, W3%, W4%, W5%]
   crewWeeklyTargets: number[] // [W1, W2, W3, W4, W5] per-crew amounts
   currentWeek: number
+  // Detail Report Summary — Penjualan Brand & Dept (isolated per zoning, claim crew only)
+  reportSummary: {
+    rows: Array<{ brand: string; dept: string; qty: number; netto: number; struk: number }>
+    totalQty: number
+    totalNetto: number
+  }
 }
 
 export interface ScanResult {

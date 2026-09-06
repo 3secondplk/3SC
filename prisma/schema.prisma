@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────
 // CMS Crew Management System — Prisma Schema (PostgreSQL)
-// Deploy ke Vercel dengan Neon / Supabase / Railway DB
+// Siap deploy Vercel + Neon / Supabase / Vercel Postgres
 // ─────────────────────────────────────────────────────────
 
 generator client {

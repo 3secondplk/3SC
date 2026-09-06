@@ -863,16 +863,23 @@ export default function Home() {
   }
 
   // ─── Group Detail fetch ──────────────────────────────
+  // Isolated monthly filter: pass dashboard-selected month/year so the
+  // zoning detail (crew perf + report summary) matches the dashboard period.
   const fetchGroupDetail = useCallback(async (groupId: string, period: 'daily' | 'weekly' | 'monthly') => {
     setGroupDetailLoading(true)
     try {
-      const r = await safeFetch(`/api/dashboard/group-detail?groupId=${groupId}&period=${period}`)
+      const params = new URLSearchParams({ groupId, period })
+      if (!isCurrentMonth) {
+        params.set('month', String(dashMonth + 1))
+        params.set('year', String(dashYear))
+      }
+      const r = await safeFetch(`/api/dashboard/group-detail?${params.toString()}`)
       const d = await r.json()
       if (d.error) { toast.error(d.error); return }
       setGroupDetailData(d)
     } catch { toast.error('Gagal memuat detail grup') }
     finally { setGroupDetailLoading(false) }
-  }, [])
+  }, [isCurrentMonth, dashMonth, dashYear])
 
   // Open group detail when selectedGroupDetail changes
   useEffect(() => {
@@ -915,13 +922,17 @@ export default function Home() {
   const dateStr = `${dayNames[wibDate.getDay()]}, ${wibDate.getDate()} ${monthNames[wibDate.getMonth()]} ${wibDate.getFullYear()}`
 
   // ─── Greeting Config (WIB time-of-day) ─────────────────
+  // NOTE: uses stable default until mounted to avoid SSR/client hydration mismatch
   const greetingConfig = useMemo(() => {
+    if (!mounted) {
+      return { text: 'Selamat Datang', icon: Sparkles, gradient: 'from-[#E14227] via-[#D4956B] to-[#E6BAA3]', bgGradient: 'from-[#F0EAD6]/80 via-[#E6DDD0]/60 to-[#E6BAA3]/40 dark:from-[#E14227]/10 dark:via-[#D4956B]/5 dark:to-[#E6BAA3]/5', iconColor: 'text-[#E14227]', textColor: 'from-[#B8321E] to-[#E14227] dark:from-[#F07050] dark:to-[#E14227]' }
+    }
     const hour = wibDate.getHours()
     if (hour >= 5 && hour <= 11) return { text: 'Selamat Pagi', icon: Sun, gradient: 'from-[#E14227] via-[#D4956B] to-[#E6BAA3]', bgGradient: 'from-[#F0EAD6]/80 via-[#E6DDD0]/60 to-[#E6BAA3]/40 dark:from-[#E14227]/10 dark:via-[#D4956B]/5 dark:to-[#E6BAA3]/5', iconColor: 'text-[#E14227]', textColor: 'from-[#B8321E] to-[#E14227] dark:from-[#F07050] dark:to-[#E14227]' }
     if (hour >= 12 && hour <= 14) return { text: 'Selamat Siang', icon: Sun, gradient: 'from-[#D4956B] via-[#E14227] to-[#E6BAA3]', bgGradient: 'from-[#E6DDD0]/80 via-[#F0EAD6]/60 to-[#E6BAA3]/40 dark:from-[#D4956B]/10 dark:via-[#E14227]/5 dark:to-[#E6BAA3]/5', iconColor: 'text-[#D4956B]', textColor: 'from-[#B8321E] to-[#D4956B] dark:from-[#F07050] dark:to-[#D4956B]' }
     if (hour >= 15 && hour <= 17) return { text: 'Selamat Sore', icon: Sunset, gradient: 'from-[#9DB1CC] via-[#B2AC88] to-[#E6BAA3]', bgGradient: 'from-[#E6DDD0]/80 via-[#D5E0EB]/60 to-[#E6BAA3]/40 dark:from-[#9DB1CC]/10 dark:via-[#B2AC88]/5 dark:to-[#E6BAA3]/5', iconColor: 'text-[#9DB1CC]', textColor: 'from-[#7E95B3] to-[#9DB1CC] dark:from-[#B5C7DB] dark:to-[#9DB1CC]' }
     return { text: 'Selamat Malam', icon: Moon, gradient: 'from-[#1A1A1B] via-[#3A3632] to-[#5A524C]', bgGradient: 'from-[#E6DDD0]/40 via-[#1A1A1B]/60 to-[#1A1A1B]/40 dark:from-[#1A1A1B]/30 dark:via-[#3A3632]/20 dark:to-[#1A1A1B]/10', iconColor: 'text-[#E6BAA3]', textColor: 'from-[#E6BAA3] to-[#D4956B] dark:from-[#E6BAA3] dark:to-[#D4956B]' }
-  }, [wibDate])
+  }, [mounted, wibDate])
 
 
   // ─── RENDER ────────────────────────────────────────────
@@ -970,7 +981,11 @@ export default function Home() {
                       CMS Crew
                     </h1>
                     <p className="text-[9px] sm:text-[10px] text-muted-foreground font-medium -mt-0.5 tracking-wide">
-                      Ahtjong Labs <span className="inline-block mx-1 text-muted-foreground/30">·</span> {dateStr}
+                      {mounted ? (
+                        <>Ahtjong Labs <span className="inline-block mx-1 text-muted-foreground/30">·</span> {dateStr}</>
+                      ) : (
+                        'Ahtjong Labs'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1090,7 +1105,7 @@ export default function Home() {
                   )}
                 </h2>
                 <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">
-                  {dateStr} · {dashboard && !dashLoading ? `${dashboard.crewStats.length} crew aktif` : 'Memuat data...'}
+                  {mounted ? `${dateStr} · ` : ''}{dashboard && !dashLoading ? `${dashboard.crewStats.length} crew aktif` : 'Memuat data...'}
                 </p>
               </div>
               {!isAdmin && (

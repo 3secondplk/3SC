@@ -283,13 +283,13 @@ export async function GET(request: NextRequest) {
     // Search across kodeExtend, brand, dept, and crew name (case-insensitive)
     if (search) {
       const searchConditions: Record<string, any>[] = [
-        { kodeExtend: { contains: search, mode: 'insensitive' } },
-        { brand: { contains: search, mode: 'insensitive' } },
-        { dept: { contains: search, mode: 'insensitive' } },
+        { kodeExtend: { contains: search } },
+        { brand: { contains: search } },
+        { dept: { contains: search } },
       ]
       // Only add crew name search if there might be a crew relation
       if (claimed !== 'false') {
-        searchConditions.push({ crew: { name: { contains: search, mode: 'insensitive' } } })
+        searchConditions.push({ crew: { name: { contains: search } } })
       }
       where.OR = searchConditions
     }
