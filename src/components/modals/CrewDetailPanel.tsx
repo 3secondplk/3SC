@@ -7,11 +7,14 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { X, Zap, TrendingUp, BarChart3, Flame, Target, Calendar, CheckCircle2, AlertTriangle, ArrowUp, Shield, Award, ShoppingCart, CircleDollarSign } from 'lucide-react'
 import { fmtRp, fmtNum, CircularProgress } from '@/lib/cms-utils'
+import { shiftBadgeClass } from '@/components/management/TargetBreakdownPanel'
 import type { CrewStat } from '@/lib/cms-types'
 
 interface CrewDetailPanelProps {
   selectedCrewDetail: CrewStat | null
   setSelectedCrewDetail: (c: CrewStat | null) => void
+  /** true = target crew dari engine breakdown (crewTodayTarget valid) */
+  engineActive?: boolean
 }
 
 function getAchievementColor(pct: number) {
@@ -50,7 +53,7 @@ function MiniSparkline({ values, color }: { values: number[]; color: string }) {
   )
 }
 
-export default function CrewDetailPanel({ selectedCrewDetail, setSelectedCrewDetail }: CrewDetailPanelProps) {
+export default function CrewDetailPanel({ selectedCrewDetail, setSelectedCrewDetail, engineActive }: CrewDetailPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [showScrollTop, setShowScrollTop] = useState(false)
 
@@ -69,6 +72,14 @@ export default function CrewDetailPanel({ selectedCrewDetail, setSelectedCrewDet
   const weekColor = getAchievementColor(crew.crewWeeklyAchievement)
   const monthEmoji = getAchievementEmoji(crew.crewMonthlyAchievement)
   const weekEmoji = getAchievementEmoji(crew.crewWeeklyAchievement)
+
+  // ── Target harian (engine shift-aware, realtime) ──
+  const todayTarget = crew.crewTodayTarget ?? 0
+  const todayAch = todayTarget > 0 ? Math.min(Math.round((crew.todayTotal / todayTarget) * 100), 999) : 0
+  const todayColor = getAchievementColor(todayAch)
+  const todayEmoji = getAchievementEmoji(todayAch)
+  const shiftToday = crew.crewShiftToday ?? null
+  const showDailyTarget = engineActive === true
 
   return (
     <AnimatePresence>
@@ -159,6 +170,54 @@ export default function CrewDetailPanel({ selectedCrewDetail, setSelectedCrewDet
                       <p className="text-[10px] text-muted-foreground">{fmtRp(crew.groupMonthlyTarget)} grup ÷ {crew.groupName.split(' ')[0]} crew</p>
                     </div>
                   </div>
+
+                  {/* Daily Target (dari engine breakdown — shift-aware) */}
+                  {showDailyTarget && (
+                    <div className="space-y-2 pb-2.5 border-b border-border/40">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Zap className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span className="text-xs font-medium">Target Hari Ini</span>
+                          {shiftToday ? (
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${shiftBadgeClass(shiftToday)}`}>
+                              Shift {shiftToday}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                              Belum dijadwalkan
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-sm font-bold">{fmtRp(todayTarget)}</span>
+                      </div>
+                      {todayTarget > 0 ? (
+                        <>
+                          <div className="h-2 bg-muted/80 rounded-full overflow-hidden">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.min(todayAch, 100)}%` }}
+                              transition={{ duration: 0.8, ease: 'easeOut' }}
+                              className={`h-full rounded-full bg-gradient-to-r ${todayColor.gradient}`}
+                            />
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            {fmtRp(crew.todayTotal)} dari {fmtRp(todayTarget)} ({todayAch}%)
+                            {todayAch >= 100 && (
+                              <span className="ml-1 text-[#B8321E] dark:text-[#F07050] font-medium">✅ {todayEmoji.text}</span>
+                            )}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground">
+                          {shiftToday === 'O'
+                            ? 'Shift OFF hari ini — tidak ada target penjualan.'
+                            : shiftToday
+                              ? 'Bobot shift 0 — tidak ada target penjualan hari ini.'
+                              : 'Crew tidak dijadwalkan hari ini — target Rp0, porsi dialihkan ke crew ber-shift.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Monthly Target with achievement emoji */}
                   <div className="space-y-2">

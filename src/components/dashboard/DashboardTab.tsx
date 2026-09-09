@@ -202,12 +202,32 @@ const DashboardTab = React.memo(function DashboardTab({
   const isAchievement = leaderboardView === 'achievement'
 
   // Helper: get period-appropriate target + achievement % for a crew
-  function getPeriodTarget(crew: CrewStat) {
+  function getPeriodTarget(crew: CrewStat): {
+    value: number | null; label: string; pct: number; actual: number; off?: boolean
+  } {
     if (isAchievement) return { value: null, label: '', pct: crew.crewMonthlyAchievement, actual: crew.monthTotal }
-    if (leaderboardView === 'today' && workingDaysInWeek > 0) {
-      const target = crew.crewCurrentWeekTarget / workingDaysInWeek
-      const pct = target > 0 ? Math.min(Math.round((crew.todayTotal / target) * 100), 999) : 0
-      return { value: target, label: 'Target harian', pct, actual: crew.todayTotal }
+    if (leaderboardView === 'today') {
+      // ENGINE AKTIF: target harian shift-aware dari breakdown realtime
+      // (target 0 + badge untuk crew Off / belum dijadwalkan)
+      if (dashboard?.engineActive) {
+        const shift = crew.crewShiftToday ?? null
+        if (!shift) {
+          return { value: 0, label: 'Belum dijadwalkan', pct: 0, actual: crew.todayTotal, off: true }
+        }
+        if (shift === 'O') {
+          return { value: 0, label: 'OFF hari ini', pct: 0, actual: crew.todayTotal, off: true }
+        }
+        const target = crew.crewTodayTarget ?? 0
+        const pct = target > 0 ? Math.min(Math.round((crew.todayTotal / target) * 100), 999) : 0
+        return { value: target, label: `Target harian · shift ${shift}`, pct, actual: crew.todayTotal }
+      }
+      // LEGACY (engine tidak aktif): split rata target mingguan
+      if (workingDaysInWeek > 0) {
+        const target = crew.crewCurrentWeekTarget / workingDaysInWeek
+        const pct = target > 0 ? Math.min(Math.round((crew.todayTotal / target) * 100), 999) : 0
+        return { value: target, label: 'Target harian', pct, actual: crew.todayTotal }
+      }
+      return { value: 0, label: 'Target harian', pct: 0, actual: crew.todayTotal }
     }
     if (leaderboardView === 'week') {
       const pct = crew.crewWeeklyAchievement
@@ -762,7 +782,7 @@ const DashboardTab = React.memo(function DashboardTab({
                         const crew = top3Crews[1]
                         const periodVal = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
                         const periodQty = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
-                        const { value: targetVal, label: targetLabel, pct: targetPct } = getPeriodTarget(crew)
+                        const { value: targetVal, label: targetLabel, pct: targetPct, off: crewOff } = getPeriodTarget(crew)
                         return (
                           <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, type: 'spring', stiffness: 180 }}
                             className="flex flex-col items-center flex-1 max-w-[150px]">
@@ -783,7 +803,7 @@ const DashboardTab = React.memo(function DashboardTab({
                               <div className="w-full max-w-[120px] mt-1">
                                 <div className="flex items-center justify-between mb-0.5">
                                   <span className="text-[8px] text-muted-foreground">{targetLabel}</span>
-                                  <span className={`text-[9px] font-bold ${getTargetPctColor(targetPct)}`}>{targetPct}%</span>
+                                  <span className={`text-[9px] font-bold ${crewOff ? 'text-muted-foreground/60' : getTargetPctColor(targetPct)}`}>{crewOff ? 'OFF' : `${targetPct}%`}</span>
                                 </div>
                                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                                   <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(targetPct, 100)}%` }} transition={{ duration: 0.8 }} className={`h-full rounded-full ${getTargetBarColor(targetPct)}`} />
@@ -813,7 +833,7 @@ const DashboardTab = React.memo(function DashboardTab({
                         const crew = top3Crews[0]
                         const periodVal = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
                         const periodQty = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
-                        const { value: targetVal, label: targetLabel, pct: targetPct } = getPeriodTarget(crew)
+                        const { value: targetVal, label: targetLabel, pct: targetPct, off: crewOff } = getPeriodTarget(crew)
                         return (
                           <motion.div initial={{ opacity: 0, scale: 0.8, y: 50 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ delay: 0.1, type: 'spring', stiffness: 150, damping: 12 }}
                             className="flex flex-col items-center flex-1 max-w-[170px]">
@@ -843,7 +863,7 @@ const DashboardTab = React.memo(function DashboardTab({
                               <div className="w-full max-w-[140px] mt-1">
                                 <div className="flex items-center justify-between mb-0.5">
                                   <span className="text-[8px] text-muted-foreground">{targetLabel}</span>
-                                  <span className={`text-[9px] font-bold ${getTargetPctColor(targetPct)}`}>{targetPct}%</span>
+                                  <span className={`text-[9px] font-bold ${crewOff ? 'text-muted-foreground/60' : getTargetPctColor(targetPct)}`}>{crewOff ? 'OFF' : `${targetPct}%`}</span>
                                 </div>
                                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                                   <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(targetPct, 100)}%` }} transition={{ duration: 0.8 }} className={`h-full rounded-full ${getTargetBarColor(targetPct)}`} />
@@ -873,7 +893,7 @@ const DashboardTab = React.memo(function DashboardTab({
                         const crew = top3Crews[2]
                         const periodVal = isAchievement ? crew.monthTotal : leaderboardView === 'today' ? crew.todayTotal : leaderboardView === 'week' ? crew.weekTotal : crew.monthTotal
                         const periodQty = isAchievement ? crew.crewMonthlyAchievement : leaderboardView === 'today' ? crew.todayQty : leaderboardView === 'week' ? crew.weekQty : crew.monthQty
-                        const { value: targetVal, label: targetLabel, pct: targetPct } = getPeriodTarget(crew)
+                        const { value: targetVal, label: targetLabel, pct: targetPct, off: crewOff } = getPeriodTarget(crew)
                         return (
                           <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, type: 'spring', stiffness: 180 }}
                             className="flex flex-col items-center flex-1 max-w-[150px]">
@@ -894,7 +914,7 @@ const DashboardTab = React.memo(function DashboardTab({
                               <div className="w-full max-w-[120px] mt-1">
                                 <div className="flex items-center justify-between mb-0.5">
                                   <span className="text-[8px] text-muted-foreground">{targetLabel}</span>
-                                  <span className={`text-[9px] font-bold ${getTargetPctColor(targetPct)}`}>{targetPct}%</span>
+                                  <span className={`text-[9px] font-bold ${crewOff ? 'text-muted-foreground/60' : getTargetPctColor(targetPct)}`}>{crewOff ? 'OFF' : `${targetPct}%`}</span>
                                 </div>
                                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                                   <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(targetPct, 100)}%` }} transition={{ duration: 0.8 }} className={`h-full rounded-full ${getTargetBarColor(targetPct)}`} />
@@ -971,7 +991,7 @@ const DashboardTab = React.memo(function DashboardTab({
                         const maxVal = displayCrewStats[0] ? (isAchievement ? displayCrewStats[0].crewMonthlyAchievement : leaderboardView === 'today' ? displayCrewStats[0].todayTotal : leaderboardView === 'week' ? displayCrewStats[0].weekTotal : displayCrewStats[0].monthTotal) : 1
                         const pct = maxVal > 0 ? Math.round((periodVal / maxVal) * 100) : 0
                         const rankMedal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null
-                        const { value: targetVal, label: targetLabel, pct: targetPct } = getPeriodTarget(crew)
+                        const { value: targetVal, label: targetLabel, pct: targetPct, off: crewOff } = getPeriodTarget(crew)
                         const accentColors = ['border-l-[#E14227]', 'border-l-[#9DB1CC]', 'border-l-[#E6BAA3]']
                         return (
                           <motion.div key={crew.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
@@ -994,7 +1014,7 @@ const DashboardTab = React.memo(function DashboardTab({
                                   <div className="mt-0.5">
                                     <div className="flex items-center justify-between mb-0.5">
                                       <span className="text-[8px] text-muted-foreground">{targetLabel}: {fmtRp(targetVal)}</span>
-                                      <span className={`text-[9px] font-bold ${getTargetPctColor(targetPct)}`}>{targetPct}%</span>
+                                      <span className={`text-[9px] font-bold ${crewOff ? 'text-muted-foreground/60' : getTargetPctColor(targetPct)}`}>{crewOff ? 'OFF' : `${targetPct}%`}</span>
                                     </div>
                                     <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                                       <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(targetPct, 100)}%` }} transition={{ duration: 0.8, delay: idx * 0.03 }}
@@ -1043,7 +1063,7 @@ const DashboardTab = React.memo(function DashboardTab({
                             const rowBg = idx < 3 ? 'bg-[#F0EAD6]/30 dark:bg-[#1A1A1B]/10' : (idx % 2 === 0 ? 'bg-muted/20 dark:bg-muted/5' : '')
                             const hoverBg = idx < 3 ? 'hover:bg-[#F0D5C5]/40 dark:hover:bg-[#1A1A1B]/20' : 'hover:bg-muted/40 dark:hover:bg-muted/10'
                             const borderAccent = idx === 0 ? 'border-l-[3px] border-l-[#E14227]' : idx === 1 ? 'border-l-[3px] border-l-[#9DB1CC]' : idx === 2 ? 'border-l-[3px] border-l-[#E6BAA3]' : 'border-l-[3px] border-l-transparent'
-                            const { value: targetVal, label: targetLabel, pct: targetPct } = getPeriodTarget(crew)
+                            const { value: targetVal, label: targetLabel, pct: targetPct, off: crewOff } = getPeriodTarget(crew)
                             return (
                               <TableRow key={crew.id} className={`cursor-pointer transition-all duration-200 ${rowBg} ${hoverBg} ${borderAccent}`} onClick={() => setSelectedCrewDetail(crew)}>
                                 <TableCell className="text-center font-bold">
@@ -1074,7 +1094,7 @@ const DashboardTab = React.memo(function DashboardTab({
                                         <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(targetPct, 100)}%` }} transition={{ duration: 0.8, delay: idx * 0.03 }}
                                           className={`h-full rounded-full ${getTargetBarColor(targetPct)}`} />
                                       </div>
-                                      <span className={`text-[10px] font-bold tabular-nums w-10 text-right ${getTargetPctColor(targetPct)}`}>{targetPct}%</span>
+                                      <span className={`text-[10px] font-bold tabular-nums w-10 text-right ${crewOff ? 'text-muted-foreground/60' : getTargetPctColor(targetPct)}`}>{crewOff ? '–' : `${targetPct}%`}</span>
                                     </div>
                                     {!isAchievement && targetVal !== null && (
                                       <p className="text-[9px] text-muted-foreground">{targetLabel}: {fmtRp(targetVal)}</p>

@@ -106,12 +106,38 @@ export function getMonthRange(): { from: string; to: string } {
   return { from: fmt(1), to: fmt(lastDay) }
 }
 
-// ─── Safe Fetch with Timeout (8s) ────────────────────
+// ─── Admin Token (localStorage → Authorization header) ──────────────
+// Cookie admin_token bisa DIBLOKIR browser saat app berjalan dalam iframe
+// lintas-site (third-party cookie blocked) → login sukses tapi semua API
+// admin 401. Solusi: token juga disimpan di localStorage dan dikirim via
+// header Authorization: Bearer <token> pada setiap request.
+const TOKEN_KEY = 'cms_admin_token'
+
+export function getStoredToken(): string | null {
+  if (typeof window === 'undefined') return null
+  try { return localStorage.getItem(TOKEN_KEY) } catch { return null }
+}
+
+export function setStoredToken(token: string) {
+  try { localStorage.setItem(TOKEN_KEY, token) } catch { /* ignore */ }
+}
+
+export function clearStoredToken() {
+  try { localStorage.removeItem(TOKEN_KEY) } catch { /* ignore */ }
+}
+
+// ─── Safe Fetch with Timeout + Bearer Auth ───────────
 export async function safeFetch(url: string, opts?: RequestInit, timeoutMs = 30000): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    return await fetch(url, { ...opts, signal: controller.signal })
+    // Auto-attach Authorization header (jangan timpa kalau caller sudah set)
+    const headers = new Headers(opts?.headers || {})
+    const token = getStoredToken()
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+    return await fetch(url, { ...opts, headers, signal: controller.signal })
   } finally {
     clearTimeout(timer)
   }

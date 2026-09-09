@@ -98,8 +98,10 @@ export default function KeyboardShortcutsHelp({ open, onOpenChange }: KeyboardSh
           {/* Navigation */}
           <ShortcutGroup title="Navigation" icon={LayoutDashboard}>
             <ShortcutRow keys={[<Kbd key="1">1</Kbd>]} description="Switch to Dashboard" />
-            <ShortcutRow keys={[<Kbd key="2">2</Kbd>]} description="Switch to Claims" />
-            <ShortcutRow keys={[<Kbd key="3">3</Kbd>]} description="Switch to Management" />
+            <ShortcutRow keys={[<Kbd key="2">2</Kbd>]} description="Switch to Target & Jadwal" />
+            <ShortcutRow keys={[<Kbd key="3">3</Kbd>]} description="Switch to Claims" />
+            <ShortcutRow keys={[<Kbd key="4">4</Kbd>]} description="Switch to Export" />
+            <ShortcutRow keys={[<Kbd key="5">5</Kbd>]} description="Switch to Management" />
             <ShortcutRow keys={[<Kbd key={modKey('K')}>{modKey('K')}</Kbd>]} description="Focus search input" />
           </ShortcutGroup>
 

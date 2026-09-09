@@ -12,14 +12,15 @@ import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, Upload, Settings, Layers, Sun, Moon, Shield, LogOut,
-  ChevronUp, Users, Crown, Target, Calendar, UserCheck, CheckCircle2,
+  ChevronUp, Users, Crown, Target, Calendar, CalendarDays, UserCheck, CheckCircle2,
   DollarSign, ShoppingCart, Search, X, Sparkles, Heart,
   Monitor, Briefcase, Beaker, Code2, Smartphone, Clock, Sunset, FileUp, UserPlus, Keyboard, Download, ShoppingBag,
 } from 'lucide-react'
-import { fmtRp, fmtNum, getWIBDate, getWIBToday, monthNames, dayNames, currentYear, getWeekRange, getMonthRange, safeFetch } from '@/lib/cms-utils'
+import { fmtRp, fmtNum, getWIBDate, getWIBToday, monthNames, dayNames, currentYear, getWeekRange, getMonthRange, safeFetch, setStoredToken, clearStoredToken } from '@/lib/cms-utils'
 import type { CrewStat, GroupAchievement, DashboardData, Crew, Group, ClaimSale, GroupDetailData, DeleteConfirmState } from '@/lib/cms-types'
 
 import DashboardTab from '@/components/dashboard/DashboardTab'
+import PublicTargetSchedule from '@/components/target/PublicTargetSchedule'
 import ClaimsTab from '@/components/claims/ClaimsTab'
 import TikTokSalesTab from '@/components/tiktok/TikTokSalesTab'
 import ManagementTab from '@/components/management/ManagementTab'
@@ -240,10 +241,11 @@ export default function Home() {
     }
   }, [dashboard?.unclaimedCount])
 
-  // Check auth on mount
+  // Check auth on mount (GET /api/auth via safeFetch — Bearer token otomatis)
   useEffect(() => {
-    fetch('/api/auth').then(r => r.json()).then(d => {
+    safeFetch('/api/auth').then(r => r.json()).then(d => {
       if (d.authenticated) setIsAdmin(true)
+      else clearStoredToken()
     }).catch(() => {})
   }, [])
 
@@ -464,9 +466,10 @@ export default function Home() {
 
       // ── 1, 2, 3, 4, 5 : Switch tabs ──
       if (e.key === '1') { setActiveTab('dashboard'); return }
-      if (e.key === '2') { setActiveTab('claims'); return }
-      if (e.key === '3') { setActiveTab('export'); return }
-      if (e.key === '4') { setActiveTab('management'); return }
+      if (e.key === '2') { setActiveTab('target'); return }
+      if (e.key === '3') { setActiveTab('claims'); return }
+      if (e.key === '4') { setActiveTab('export'); return }
+      if (e.key === '5') { setActiveTab('management'); return }
 
       // ── T : Toggle theme ──
       if (e.key === 't' || e.key === 'T') {
@@ -486,6 +489,9 @@ export default function Home() {
       const r = await safeFetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginForm) })
       const d = await r.json()
       if (d.error) { toast.error(d.error); return }
+      // Simpan token → semua request via safeFetch otomatis kirim Authorization
+      // (cookie bisa diblokir browser saat app dalam iframe lintas-site).
+      if (d.token) setStoredToken(d.token)
       setIsAdmin(true)
       setAdminName(d.admin.name)
       toast.success(`Selamat datang, ${d.admin.name}!`)
@@ -494,6 +500,7 @@ export default function Home() {
 
   const handleLogout = async () => {
     await safeFetch('/api/auth', { method: 'DELETE' })
+    clearStoredToken()
     setIsAdmin(false)
     toast.success('Berhasil logout')
   }
@@ -938,6 +945,7 @@ export default function Home() {
   // ─── RENDER ────────────────────────────────────────────
   const navItems = [
     { val: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', desc: 'Ringkasan & statistik' },
+    { val: 'target', icon: CalendarDays, label: 'Target', desc: 'Target & jadwal crew (publik)' },
     { val: 'claims', icon: Upload, label: 'Claim Penjualan', desc: 'Upload & klaim data' },
     { val: 'tiktok', icon: ShoppingBag, label: 'TikTok', desc: 'Penjualan TikTok' },
     { val: 'export', icon: Download, label: 'Export Data', desc: 'Preview & ekspor penjualan' },
@@ -991,19 +999,19 @@ export default function Home() {
                 </div>
 
                 {/* Desktop Nav */}
-                <nav className="hidden md:flex items-center gap-1">
+                <nav className="hidden lg:flex items-center gap-1">
                   {navItems.map(t => (
                     <button
                       key={t.val}
                       onClick={() => setActiveTab(t.val)}
-                      className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                      className={`relative flex items-center gap-2 px-2.5 py-2 xl:px-4 rounded-xl text-sm font-medium transition-all duration-200 ${
                         activeTab === t.val
                           ? 'bg-[#E14227]/10 dark:bg-[#E14227]/20 text-[#E14227] dark:text-[#E14227] shadow-sm'
                           : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                       }`}
                     >
-                      <t.icon className="w-4 h-4" />
-                      {t.label}
+                      <t.icon className="w-4 h-4 shrink-0" />
+                      <span className="hidden xl:inline">{t.label}</span>
                       {activeTab === t.val && (
                         <motion.div layoutId="nav-active" className="absolute inset-0 rounded-xl bg-[#E14227]/10 dark:bg-[#E14227]/20 -z-10" transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }} />
                       )}
@@ -1160,6 +1168,9 @@ export default function Home() {
               setDashYear={setDashYear}
             />
 
+            {/* ─── Public Target & Jadwal Tab ─────────── */}
+            <PublicTargetSchedule />
+
             {/* ─── Claims Tab ───────────────────────────── */}
             <ClaimsTab
               claimSales={claimSales}
@@ -1287,6 +1298,7 @@ export default function Home() {
       <CrewDetailPanel
         selectedCrewDetail={selectedCrewDetail}
         setSelectedCrewDetail={setSelectedCrewDetail}
+        engineActive={dashboard?.engineActive}
       />
 
       {/* ─── Group/Zoning Detail Modal ──────────────── */}
@@ -1565,7 +1577,7 @@ export default function Home() {
       </AnimatePresence>
 
       {/* ═══ MOBILE BOTTOM NAVIGATION ═══ */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-[#1A1A1B]/90 backdrop-blur-2xl border-t border-border/50 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-[#1A1A1B]/90 backdrop-blur-2xl border-t border-border/50 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
         <div className="flex items-center justify-around px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
           {navItems.map(t => {
             const isActive = activeTab === t.val
@@ -1576,7 +1588,7 @@ export default function Home() {
                 onClick={() => { setActiveTab(t.val); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
                 whileTap={{ scale: 0.88 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-                className={`relative flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-2xl min-w-[64px] transition-colors duration-200 ${
+                className={`relative flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 rounded-2xl min-w-[48px] transition-colors duration-200 ${
                   isActive
                     ? 'text-[#E14227] dark:text-[#E14227]'
                     : 'text-muted-foreground active:text-[#E14227]'
@@ -1598,7 +1610,7 @@ export default function Home() {
                     <t.icon className={`w-[18px] h-[18px] transition-all duration-200 ${isActive ? 'stroke-[2.5px]' : 'stroke-[1.5px]'}`} />
                   </motion.div>
                   <span className={`text-[10px] font-semibold leading-none transition-all duration-200 ${isActive ? 'text-[#E14227] dark:text-[#E14227]' : ''}`}>
-                    {t.val === 'claims' ? 'Claim' : t.val === 'management' ? 'Mgmt' : t.label}
+                    {t.val === 'claims' ? 'Claim' : t.val === 'management' ? 'Mgmt' : t.val === 'target' ? 'Target' : t.label}
                   </span>
                 </div>
                 {/* Notification badge for unclaimed items */}

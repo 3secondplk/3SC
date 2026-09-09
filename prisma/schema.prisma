@@ -1,6 +1,13 @@
 // ─────────────────────────────────────────────────────────
 // CMS Crew Management System — Prisma Schema (PostgreSQL)
-// Siap deploy Vercel + Neon / Supabase / Vercel Postgres
+// Untuk deploy Vercel + Postgres (Vercel Postgres / Neon / Supabase).
+// Fitur:
+// TARGET BREAKDOWN: Toko → Zoning (Group) → Shift → Crew
+//
+// Prinsip desain (NO SNAPSHOT / NO HISTORY):
+// - Target selalu dihitung REALTIME oleh src/lib/target-engine.ts
+//   berdasarkan konfigurasi aktif + Crew.groupId + jadwal shift.
+// - Tidak ada tabel snapshot target crew / histori assignment.
 // ─────────────────────────────────────────────────────────
 
 generator client {
@@ -21,20 +28,25 @@ model Admin {
   updatedAt DateTime @updatedAt
 }
 
+// ─── ZONING: tabel Group existing — SATU-SATUNYA sumber zoning ───
 model Group {
-  id             String  @id @default(cuid())
-  name           String
-  logo           String?
-  monthlyTarget  Float   @default(0)
-  week1Target    Float   @default(0)
-  week2Target    Float   @default(0)
-  week3Target    Float   @default(0)
-  week4Target    Float   @default(0)
-  week5Target    Float   @default(0)
-  tiktokActive   Boolean @default(false)
-  crews          Crew[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String  @id @default(cuid())
+  name          String
+  logo          String?
+  monthlyTarget Float   @default(0)
+  week1Target   Float   @default(0)
+  week2Target   Float   @default(0)
+  week3Target   Float   @default(0)
+  week4Target   Float   @default(0)
+  week5Target   Float   @default(0)
+  // NEW: persentase kontribusi zoning terhadap Target Bulanan Toko.
+  // Validasi: Σ allocationPct semua group = 100 (divalidasi di API store-config).
+  // Group.monthlyTarget menjadi NILAI TURUNAN (write-through dari engine).
+  allocationPct Float   @default(0)
+  tiktokActive  Boolean @default(false)
+  crews         Crew[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model Crew {
@@ -46,8 +58,61 @@ model Crew {
   group       Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
   sales       Sale[]
   tiktokSales TikTokSale[]
+  // NEW: jadwal shift per tanggal (roster aktif — bukan history target).
+  // Target crew TIDAK pernah disimpan; selalu dihitung realtime dari sini.
+  shifts      CrewShift[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+}
+
+// ─── NEW: Target Bulanan Toko (sumber utama hierarchy) — singleton ───
+model StoreConfig {
+  id            String   @id @default(cuid())
+  // Target Bulanan Toko (Rp). Σ Target Group = nilai ini (dijamin engine).
+  monthlyTarget Float    @default(0)
+  // Distribusi mingguan (% dari target bulanan). Validasi: Σ = 100.
+  week1Pct      Float    @default(25)
+  week2Pct      Float    @default(21)
+  week3Pct      Float    @default(23)
+  week4Pct      Float    @default(26)
+  week5Pct      Float    @default(5)
+  // Distribusi harian per hari dalam seminggu — BOBOT RELATIF (bukan share
+  // wajib 100%). Contoh: Sen 3, Sel 3, ..., Sab 4.5, Min 4.5 → weekend dapat
+  // porsi lebih besar (rasio 1.5×). Engine menormalisasi bobot ini DI DALAM
+  // tiap minggu sehingga Σ Target Harian = Target Mingguan tetap PERSIS.
+  dayPctMon     Float    @default(3)
+  dayPctTue     Float    @default(3)
+  dayPctWed     Float    @default(3)
+  dayPctThu     Float    @default(3)
+  dayPctFri     Float    @default(3)
+  dayPctSat     Float    @default(4.5)
+  dayPctSun     Float    @default(4.5)
+  updatedAt     DateTime @updatedAt
+}
+
+// ─── NEW: Bobot shift — CONFIGURABLE, tidak di-hardcode ───
+// Default seed: P(Pagi)=1, S(Siang)=1, F(Full)=2, O(Off)=0
+// Admin dapat mengubah bobot / menambah kode shift baru.
+model ShiftType {
+  id        String  @id @default(cuid())
+  code      String  @unique // P, S, F, O, ...
+  label     String // Pagi, Siang, Full, Off, ...
+  weight    Float   @default(1) // bobot kontribusi target (O = 0)
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+}
+
+// ─── NEW: Jadwal shift crew per tanggal (yyyy-mm-dd, WIB) ───
+// Ini ROSTER/plan operasional — BUKAN snapshot target & BUKAN history.
+// Crew pindah zoning → otomatis ikut target zoning aktif (via Crew.groupId).
+model CrewShift {
+  id        String @id @default(cuid())
+  crewId    String
+  crew      Crew   @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  tanggal   String // yyyy-mm-dd
+  shiftCode String // referensi logis ke ShiftType.code
+  @@unique([crewId, tanggal])
+  @@index([tanggal])
 }
 
 model Sale {

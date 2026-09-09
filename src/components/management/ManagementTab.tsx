@@ -22,6 +22,7 @@ import GroupForm from '@/components/management/GroupForm'
 import ActivityLogPanel from '@/components/management/ActivityLogPanel'
 import ManagementReport from '@/components/management/ManagementReport'
 import SettingsPanel from '@/components/management/SettingsPanel'
+import TargetBreakdownPanel from '@/components/management/TargetBreakdownPanel'
 import LoadingOverlay from '@/components/ui/LoadingOverlay'
 
 // ─── Lightweight CountUp Component ───────────────────────
@@ -428,9 +429,10 @@ const ManagementTab = React.memo(function ManagementTab({
             </div>
 
             {/* Tabs List */}
-            <TabsList className="bg-muted/80 backdrop-blur-sm rounded-xl p-1">
-              <TabsTrigger value="crews" className="rounded-lg data-[state=active]:bg-[#E14227] data-[state=active]:text-white transition-all"><Users className="w-4 h-4 mr-2" />Crew</TabsTrigger>
-              <TabsTrigger value="groups" className="rounded-lg data-[state=active]:bg-[#E14227] data-[state=active]:text-white transition-all"><Target className="w-4 h-4 mr-2" />Group / Zoning</TabsTrigger>
+            <TabsList className="bg-muted/80 backdrop-blur-sm rounded-xl p-1 max-w-full overflow-x-auto scrollbar-none">
+              <TabsTrigger value="crews" className="rounded-lg shrink-0 whitespace-nowrap data-[state=active]:bg-[#E14227] data-[state=active]:text-white transition-all"><Users className="w-4 h-4 mr-2" />Crew</TabsTrigger>
+              <TabsTrigger value="groups" className="rounded-lg shrink-0 whitespace-nowrap data-[state=active]:bg-[#E14227] data-[state=active]:text-white transition-all"><Target className="w-4 h-4 mr-2" />Group / Zoning</TabsTrigger>
+              <TabsTrigger value="target" className="rounded-lg shrink-0 whitespace-nowrap data-[state=active]:bg-[#E14227] data-[state=active]:text-white transition-all"><CalendarDays className="w-4 h-4 mr-2" />Target &amp; Jadwal</TabsTrigger>
               <TabsTrigger value="report" className="rounded-lg data-[state=active]:bg-[#E14227] data-[state=active]:text-white transition-all"><FileBarChart className="w-4 h-4 mr-2" />Laporan</TabsTrigger>
               <TabsTrigger value="settings" className="rounded-lg data-[state=active]:bg-[#E14227] data-[state=active]:text-white transition-all"><Settings className="w-4 h-4 mr-2" />Pengaturan</TabsTrigger>
             </TabsList>
@@ -860,6 +862,13 @@ const ManagementTab = React.memo(function ManagementTab({
                 </Dialog>
               </motion.div>
             </TabsContent>
+            {/* ═══════════════════════════════════════════════════
+                TARGET & JADWAL TAB (Toko → Zoning → Shift → Crew)
+                ═══════════════════════════════════════════════════ */}
+            <TabsContent value="target" className="mt-4">
+              <TargetBreakdownPanel onChanged={onImportSuccess} />
+            </TabsContent>
+
             {/* ═══════════════════════════════════════════════════
                 LAPORAN (REPORT) TAB
                 ═══════════════════════════════════════════════════ */}

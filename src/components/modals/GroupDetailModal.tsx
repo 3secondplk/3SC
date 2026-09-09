@@ -5,9 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { X, Users, Package, DollarSign, ShoppingCart, Layers, Percent, Target, Eye, Receipt, BarChart3 } from 'lucide-react'
+import { X, Users, Package, DollarSign, ShoppingCart, Layers, Percent, Target, Eye, Receipt, BarChart3, Zap } from 'lucide-react'
 import { fmtRp, fmtNum } from '@/lib/cms-utils'
-import type { GroupAchievement, GroupDetailData } from '@/lib/cms-types'
+import { shiftBadgeClass } from '@/components/management/TargetBreakdownPanel'
+import type { GroupAchievement, GroupDetailData, GroupDetailCrew } from '@/lib/cms-types'
 
 // ─── Detail Report Summary — Penjualan Brand & Dept per Zoning ───
 // Isolated per zoning (modal ini), berdasarkan CLAIM penjualan crew.
@@ -108,10 +109,97 @@ function getAchievementColor(pct: number) {
   return { text: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-950/40', bar: 'bg-red-500' }
 }
 
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+
+/** "2025-09-08" → "8 Sep" (WIB, tanpa timezone shifting) */
+function dayLabel(iso?: string): string {
+  if (!iso) return ''
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (!m) return iso
+  return `${Number(m[3])} ${SHORT_MONTHS[Number(m[2]) - 1] ?? ''}`
+}
+
+// ─── Target aktif sesuai periode (daily = target harian engine, shift-aware) ───
+function periodTarget(c: GroupDetailCrew, period: 'daily' | 'weekly' | 'monthly', dailyOk: boolean): number {
+  if (period === 'monthly') return c.crewMonthlyTarget
+  if (period === 'daily') return dailyOk ? (c.crewTodayTarget ?? 0) : c.crewCurrentWeekTarget
+  return c.crewCurrentWeekTarget
+}
+
+function periodAchievement(c: GroupDetailCrew, period: 'daily' | 'weekly' | 'monthly', dailyOk: boolean): number {
+  if (period === 'monthly') return c.crewMonthlyAchievement
+  if (period === 'daily') {
+    const t = dailyOk ? (c.crewTodayTarget ?? 0) : c.crewCurrentWeekTarget
+    return t > 0 ? Math.min(Math.round((c.totalSettle / t) * 100), 999) : 0
+  }
+  return c.crewWeeklyAchievement
+}
+
+function periodTargetLabel(period: 'daily' | 'weekly' | 'monthly', currentWeek: number, dailyOk: boolean): string {
+  if (period === 'monthly') return 'Target Bulan'
+  if (period === 'daily') return dailyOk ? 'Target Hari Ini' : `Target W${currentWeek}`
+  return `Target W${currentWeek}`
+}
+
+/**
+ * Target Hari Ini per crew (engine Toko→Zoning→Shift→Crew, realtime).
+ * Crew Off / belum dijadwalkan → Rp0 + badge, porsi dialihkan ke crew ber-shift.
+ */
+function DailyTodayStrip({ data, variant = 'scroll' }: { data: GroupDetailData; variant?: 'scroll' | 'grid' }) {
+  const dailyOk = data.engineActive === true
+  if (!dailyOk || data.crews.length === 0) return null
+
+  const header = (
+    <div className="flex items-center justify-between mb-1.5">
+      <div className="flex items-center gap-1">
+        <Zap className="w-3 h-3 text-[#E14227]" />
+        <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">
+          Hari ini{data.todayIso ? ` (${dayLabel(data.todayIso)})` : ''}
+        </span>
+      </div>
+      <span className="text-[9px] font-bold text-[#B8321E] dark:text-[#F07050] tabular-nums">
+        Σ {fmtRp(data.groupTodayTarget ?? 0)}
+      </span>
+    </div>
+  )
+
+  const chips = data.crews.map(c => (
+    <div
+      key={c.id}
+      className="flex items-center gap-1 px-1.5 py-1 rounded-md bg-white dark:bg-gray-800 border border-border/50 shrink-0"
+    >
+      <span
+        className={`text-[8px] font-bold px-1 py-0.5 rounded leading-none ${
+          c.crewShiftToday ? shiftBadgeClass(c.crewShiftToday) : 'bg-muted text-muted-foreground'
+        }`}
+      >
+        {c.crewShiftToday || '–'}
+      </span>
+      <span className="text-[9px] font-medium max-w-[72px] truncate">{c.name.split(' ')[0]}</span>
+      <span className="text-[9px] font-bold tabular-nums text-[#B8321E] dark:text-[#F07050]">
+        {fmtRp(c.crewTodayTarget ?? 0)}
+      </span>
+    </div>
+  ))
+
+  return (
+    <div className="pt-2 border-t border-border/40">
+      {header}
+      {variant === 'grid' ? (
+        <div className="flex flex-wrap gap-1.5">{chips}</div>
+      ) : (
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none -mx-0.5 px-0.5">{chips}</div>
+      )}
+    </div>
+  )
+}
+
 export default function GroupDetailModal({
   selectedGroupDetail, setSelectedGroupDetail,
   groupDetailData, groupDetailPeriod, setGroupDetailPeriod, groupDetailLoading,
 }: GroupDetailModalProps) {
+  // Target harian tampil hanya bila engine breakdown aktif
+  const dailyOk = groupDetailData?.engineActive === true
   return (
     <AnimatePresence>
       {selectedGroupDetail && (
@@ -237,6 +325,8 @@ export default function GroupDetailModal({
                           )
                         })}
                       </div>
+                      {/* Target hari ini per crew (engine shift-aware) */}
+                      <DailyTodayStrip data={groupDetailData} />
                     </div>
                   )}
 
@@ -255,6 +345,8 @@ export default function GroupDetailModal({
                       <div className="space-y-2">
                         {groupDetailData.crews.map((c, idx) => {
                           const aColor = getAchievementColor(c.crewMonthlyAchievement)
+                          const displayAchievement = periodAchievement(c, groupDetailPeriod, dailyOk)
+                          const displayTarget = periodTarget(c, groupDetailPeriod, dailyOk)
                           return (
                             <motion.div
                               key={c.id}
@@ -283,7 +375,7 @@ export default function GroupDetailModal({
                                   <p className="text-[9px] text-muted-foreground font-mono">{c.employeeId}</p>
                                 </div>
                                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${aColor.bg} ${aColor.text}`}>
-                                  {groupDetailPeriod === 'monthly' ? c.crewMonthlyAchievement : c.crewWeeklyAchievement}%
+                                  {displayAchievement}%
                                 </span>
                               </div>
 
@@ -294,8 +386,8 @@ export default function GroupDetailModal({
                                   <p className={`font-bold tabular-nums mt-0.5 ${idx === 0 ? 'text-[#B8321E] dark:text-[#E6BAA3]' : ''}`}>{fmtRp(c.totalSettle)}</p>
                                 </span>
                                 <span className="flex-1 text-center py-1 rounded-md bg-muted/50">
-                                  <p className="text-muted-foreground leading-none">{groupDetailPeriod === 'monthly' ? 'Target Bulan' : 'Target W' + groupDetailData.currentWeek}</p>
-                                  <p className="font-bold tabular-nums mt-0.5">{fmtRp(groupDetailPeriod === 'monthly' ? c.crewMonthlyTarget : c.crewCurrentWeekTarget)}</p>
+                                  <p className="text-muted-foreground leading-none">{periodTargetLabel(groupDetailPeriod, groupDetailData.currentWeek, dailyOk)}</p>
+                                  <p className="font-bold tabular-nums mt-0.5">{fmtRp(displayTarget)}</p>
                                 </span>
                                 <span className="flex-1 text-center py-1 rounded-md bg-muted/50">
                                   <p className="text-muted-foreground leading-none">Qty</p>
@@ -308,11 +400,11 @@ export default function GroupDetailModal({
                               </div>
 
                               {/* Achievement bar */}
-                              {(groupDetailPeriod === 'monthly' ? c.crewMonthlyTarget : c.crewCurrentWeekTarget) > 0 && (
+                              {displayTarget > 0 && (
                                 <div className="mt-1.5 h-1 bg-muted rounded-full overflow-hidden">
                                   <motion.div
                                     initial={{ width: 0 }}
-                                    animate={{ width: `${Math.min(groupDetailPeriod === 'monthly' ? c.crewMonthlyAchievement : c.crewWeeklyAchievement, 100)}%` }}
+                                    animate={{ width: `${Math.min(displayAchievement, 100)}%` }}
                                     transition={{ duration: 0.5, delay: idx * 0.04 }}
                                     className={`h-full rounded-full ${aColor.bar}`}
                                   />
@@ -450,6 +542,8 @@ export default function GroupDetailModal({
                           )
                         })}
                       </div>
+                      {/* Target hari ini per crew (engine shift-aware) */}
+                      <DailyTodayStrip data={groupDetailData} variant="grid" />
                     </div>
                   )}
 
@@ -499,7 +593,7 @@ export default function GroupDetailModal({
                                 <TableHead className="text-[10px] uppercase tracking-wider">#</TableHead>
                                 <TableHead className="text-[10px] uppercase tracking-wider">Crew</TableHead>
                                 <TableHead className="text-[10px] uppercase tracking-wider text-right">Penjualan</TableHead>
-                                <TableHead className="text-[10px] uppercase tracking-wider text-right">{groupDetailPeriod === 'monthly' ? 'Target Bulan' : `Target W${groupDetailData.currentWeek}`}</TableHead>
+                                <TableHead className="text-[10px] uppercase tracking-wider text-right">{periodTargetLabel(groupDetailPeriod, groupDetailData.currentWeek, dailyOk)}</TableHead>
                                 <TableHead className="text-[10px] uppercase tracking-wider text-right">Achievement</TableHead>
                                 <TableHead className="text-[10px] uppercase tracking-wider text-center">Weekly</TableHead>
                                 <TableHead className="text-[10px] uppercase tracking-wider text-right">Qty</TableHead>
@@ -509,7 +603,8 @@ export default function GroupDetailModal({
                             </TableHeader>
                             <TableBody>
                               {groupDetailData.crews.map((c, idx) => {
-                                const displayAchievement = groupDetailPeriod === 'monthly' ? c.crewMonthlyAchievement : c.crewWeeklyAchievement
+                                const displayAchievement = periodAchievement(c, groupDetailPeriod, dailyOk)
+                                const displayTarget = periodTarget(c, groupDetailPeriod, dailyOk)
                                 const aColor = getAchievementColor(displayAchievement)
                                 return (
                                   <TableRow key={c.id} className={`transition-colors ${idx === 0 ? 'bg-amber-50/50 dark:bg-amber-950/10' : 'hover:bg-muted/50'}`}>
@@ -529,11 +624,25 @@ export default function GroupDetailModal({
                                         <div>
                                           <p className="text-xs font-semibold">{c.name}</p>
                                           <p className="text-[10px] text-muted-foreground font-mono">{c.employeeId}</p>
+                                          {dailyOk && (
+                                            <div className="flex items-center gap-1 mt-0.5">
+                                              <span
+                                                className={`text-[8px] font-bold px-1 py-px rounded leading-none ${
+                                                  c.crewShiftToday ? shiftBadgeClass(c.crewShiftToday) : 'bg-muted text-muted-foreground'
+                                                }`}
+                                              >
+                                                {c.crewShiftToday || '–'}
+                                              </span>
+                                              <span className="text-[9px] text-muted-foreground tabular-nums">
+                                                {fmtRp(c.crewTodayTarget ?? 0)}/hr
+                                              </span>
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     </TableCell>
                                     <TableCell className="text-right text-xs font-bold tabular-nums text-[#B8321E] dark:text-[#F07050]">{fmtRp(c.totalSettle)}</TableCell>
-                                    <TableCell className="text-right text-xs tabular-nums text-muted-foreground">{fmtRp(groupDetailPeriod === 'monthly' ? c.crewMonthlyTarget : c.crewCurrentWeekTarget)}</TableCell>
+                                    <TableCell className="text-right text-xs tabular-nums text-muted-foreground">{fmtRp(displayTarget)}</TableCell>
                                     <TableCell className="text-right">
                                       <span className={`text-xs font-bold ${aColor.text}`}>{displayAchievement}%</span>
                                     </TableCell>
@@ -574,7 +683,8 @@ export default function GroupDetailModal({
                         {/* Tablet cards (sm) */}
                         <div className="md:hidden sm:grid sm:grid-cols-2 gap-3">
                           {groupDetailData.crews.map((c, idx) => {
-                            const displayAchievement = groupDetailPeriod === 'monthly' ? c.crewMonthlyAchievement : c.crewWeeklyAchievement
+                            const displayAchievement = periodAchievement(c, groupDetailPeriod, dailyOk)
+                            const displayTarget = periodTarget(c, groupDetailPeriod, dailyOk)
                             const aColor = getAchievementColor(displayAchievement)
                             return (
                               <motion.div key={c.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.05 }}>
@@ -599,8 +709,8 @@ export default function GroupDetailModal({
                                       <p className="text-xs font-bold tabular-nums text-[#B8321E] dark:text-[#E6BAA3]">{fmtRp(c.totalSettle)}</p>
                                     </div>
                                     <div className="text-center p-1.5 rounded-lg bg-muted/50">
-                                      <p className="text-[9px] text-muted-foreground">{groupDetailPeriod === 'monthly' ? 'Target Bulan' : `Target W${groupDetailData.currentWeek}`}</p>
-                                      <p className="text-xs font-bold tabular-nums">{fmtRp(groupDetailPeriod === 'monthly' ? c.crewMonthlyTarget : c.crewCurrentWeekTarget)}</p>
+                                      <p className="text-[9px] text-muted-foreground">{periodTargetLabel(groupDetailPeriod, groupDetailData.currentWeek, dailyOk)}</p>
+                                      <p className="text-xs font-bold tabular-nums">{fmtRp(displayTarget)}</p>
                                     </div>
                                     <div className="text-center p-1.5 rounded-lg bg-muted/50">
                                       <p className="text-[9px] text-muted-foreground">Qty</p>
@@ -611,7 +721,7 @@ export default function GroupDetailModal({
                                       <p className="text-xs font-bold tabular-nums text-purple-700 dark:text-purple-300">{c.basketSize.toFixed(2)}</p>
                                     </div>
                                   </div>
-                                  {(groupDetailPeriod === 'monthly' ? c.crewMonthlyTarget : c.crewCurrentWeekTarget) > 0 && (
+                                  {displayTarget > 0 && (
                                     <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
                                       <motion.div
                                         initial={{ width: 0 }}

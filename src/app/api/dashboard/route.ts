@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { resolveWeekTargets } from '@/lib/week-targets'
+import { loadMonthTargets } from '@/lib/target-service'
+import { allocateCrewEven, type EngineCrewTarget, type EngineGroupTarget } from '@/lib/target-engine'
 
 // Helper: get week number (1-5) based on day of month
 function getWeekNumber(dayOfMonth: number, daysInMonth: number): number {
@@ -99,6 +101,20 @@ export async function GET(request: NextRequest) {
       include: { group: true },
     })
     const crewIds = crews.map(c => c.id)
+
+    // ── Target engine (breakdown realtime Toko→Zoning→Shift→Crew) ──
+    // Selalu load konteks penuh (semua group) agar alokasi antar zoning benar,
+    // lalu lookup per-crew hasil engine sesuai filter yang diminta.
+    const targetCtx = await loadMonthTargets(targetYear, targetMonth)
+    const engineActive = targetCtx.engineActive && !!targetCtx.month
+    const crewEngineById = new Map<string, EngineCrewTarget>()
+    const groupEngineById = new Map<string, EngineGroupTarget>()
+    if (engineActive && targetCtx.month) {
+      for (const g of targetCtx.month.groups.values()) {
+        groupEngineById.set(g.groupId, g)
+        for (const c of g.crews.values()) crewEngineById.set(c.crewId, c)
+      }
+    }
 
     // Use groupBy aggregation (Sale + TikTokSale combined)
     const [monthAgg, todayAgg, weekAgg, allTimeAgg,
@@ -228,7 +244,9 @@ export async function GET(request: NextRequest) {
         }),
       ])
     )
-    const weekAggResults = crewIds.length > 0 ? await Promise.all(weekAggPromises) : weekRanges.map(() => [[], []])
+    type WeekSettleAgg = { crewId: string | null; _sum: { settle: number | null } }
+    const weekAggResults: Array<[WeekSettleAgg[], WeekSettleAgg[]]> =
+      crewIds.length > 0 ? await Promise.all(weekAggPromises) : weekRanges.map(() => [[], []])
     const weekAggMaps = weekAggResults.map(([saleAgg, tkAgg]) => {
       const map = new Map(saleAgg.map((a: any) => [a.crewId, a._sum.settle ?? 0]))
       for (const a of tkAgg) {
@@ -277,15 +295,27 @@ export async function GET(request: NextRequest) {
       const allTimeStruk = allTimeStrukMap.get(crew.id) ?? 0
 
       // Target per Crew calculation
+      // ENGINE AKTIF: target dari breakdown Toko→Zoning→Shift→Crew (realtime,
+      // proporsional bobot shift + jadwal). LEGACY: equal split / crewCount.
+      const engineCrew = engineActive ? crewEngineById.get(crew.id) : undefined
       const gInfo = groupInfoMap.get(crew.group.id)
       const crewCount = gInfo?.crewCount ?? 1
-      const groupMonthlyTarget = gInfo?.monthlyTarget ?? 0
+      const groupMonthlyTarget = engineCrew
+        ? (groupEngineById.get(crew.group.id)?.monthly ?? gInfo?.monthlyTarget ?? 0)
+        : (gInfo?.monthlyTarget ?? 0)
       const weeklyPcts = gInfo?.weeklyTargetPcts ?? [0, 0, 0, 0, 0]
 
-      const crewMonthlyTarget = crewCount > 0 ? Math.round(groupMonthlyTarget / crewCount) : 0
-      // Auto-detect pct vs nominal week targets (see lib/week-targets.ts)
-      const crewWt = resolveWeekTargets(groupMonthlyTarget, weeklyPcts)
-      const crewWeeklyTargets = crewWt.amounts.map(amount => crewCount > 0 ? Math.round(amount / crewCount) : 0)
+      let crewMonthlyTarget: number
+      let crewWeeklyTargets: number[]
+      if (engineCrew) {
+        crewMonthlyTarget = engineCrew.monthly
+        crewWeeklyTargets = [...engineCrew.weekly]
+      } else {
+        crewMonthlyTarget = crewCount > 0 ? Math.round(groupMonthlyTarget / crewCount) : 0
+        // Auto-detect pct vs nominal week targets (see lib/week-targets.ts)
+        const crewWt = resolveWeekTargets(groupMonthlyTarget, weeklyPcts)
+        crewWeeklyTargets = crewWt.amounts.map(amount => crewCount > 0 ? Math.round(amount / crewCount) : 0)
+      }
       const crewCurrentWeekTarget = crewWeeklyTargets[currentWeek - 1] ?? 0
       const crewMonthlyAchievement = crewMonthlyTarget > 0 ? Math.min(Math.round((monthTotal / crewMonthlyTarget) * 100), 999) : 0
       const crewWeeklyAchievement = crewCurrentWeekTarget > 0 ? Math.min(Math.round((weekTotal / crewCurrentWeekTarget) * 100), 999) : 0
@@ -295,9 +325,12 @@ export async function GET(request: NextRequest) {
         const weekTarget = crewWeeklyTargets[i]
         const weekTotalForCrew = weekAggMaps[i].get(crew.id) ?? 0
         const achievement = weekTarget > 0 ? Math.min(Math.round((weekTotalForCrew / weekTarget) * 100), 999) : 0
+        const targetPct = engineCrew
+          ? (crewMonthlyTarget > 0 ? Math.round((weekTarget / crewMonthlyTarget) * 100) : 0)
+          : resolveWeekTargets(groupMonthlyTarget, weeklyPcts).pcts[i]
         return {
           week: wr.week,
-          targetPct: crewWt.pcts[i],
+          targetPct,
           target: weekTarget,
           total: weekTotalForCrew,
           achievement,
@@ -305,6 +338,10 @@ export async function GET(request: NextRequest) {
           dateTo: wr.end,
         }
       })
+
+      // Shift hari ini + target harian dari engine (null shift = belum dijadwalkan)
+      const crewShiftToday = engineCrew ? (engineCrew.shiftByDate.get(todayStr) || null) : null
+      const crewTodayTarget = engineCrew ? (engineCrew.daily.get(todayStr) ?? 0) : 0
 
       return {
         id: crew.id,
@@ -333,6 +370,8 @@ export async function GET(request: NextRequest) {
         crewCurrentWeekTarget,
         crewWeeklyAchievement,
         crewWeeklyDetails,
+        crewShiftToday,
+        crewTodayTarget,
         currentWeek,
         groupMonthlyTarget,
         groupWeeklyTargetPcts: weeklyPcts,
@@ -477,29 +516,45 @@ export async function GET(request: NextRequest) {
       const groupMonthTotal = group.crews.reduce((sum, c) => sum + (monthMap.get(c.id)?.settle ?? 0), 0)
       const weeklyTotal = group.crews.reduce((sum, c) => sum + (weekMap.get(c.id)?.settle ?? 0), 0)
 
+      // ENGINE AKTIF: target grup = hasil alokasi toko×allocation% (realtime).
+      const engineGroup = engineActive ? groupEngineById.get(group.id) : undefined
+      const effMonthlyTarget = engineGroup ? engineGroup.monthly : group.monthlyTarget
+
       // Auto-detect pct vs nominal week targets (see lib/week-targets.ts)
-      const wt = resolveWeekTargets(group.monthlyTarget, [
+      const wt = resolveWeekTargets(effMonthlyTarget, [
         group.week1Target, group.week2Target, group.week3Target, group.week4Target, group.week5Target ?? 0,
       ])
-      const weeklyTargetPcts = wt.pcts
+      const weeklyTargetPcts = engineGroup
+        ? engineGroup.weekly.map(w => (effMonthlyTarget > 0 ? Math.round((w / effMonthlyTarget) * 100) : 0))
+        : wt.pcts
       let weekTargetPct = weeklyTargetPcts[currentWeek - 1] ?? 0
 
-      const monthlyAchievement = group.monthlyTarget > 0
-        ? Math.min((groupMonthTotal / group.monthlyTarget) * 100, 100)
+      const monthlyAchievement = effMonthlyTarget > 0
+        ? Math.min((groupMonthTotal / effMonthlyTarget) * 100, 100)
         : 0
-      const weeklyTarget = wt.amounts[currentWeek - 1] ?? 0
+      const weeklyTarget = engineGroup
+        ? (engineGroup.weekly[currentWeek - 1] ?? 0)
+        : (wt.amounts[currentWeek - 1] ?? 0)
       const weeklyAchievement = weeklyTarget > 0
         ? Math.min((weeklyTotal / weeklyTarget) * 100, 100)
         : 0
 
       const crewCount = group.crews.length
-      const crewMonthlyTarget = crewCount > 0 ? Math.round(group.monthlyTarget / crewCount) : 0
-      const crewWeeklyTargets = wt.amounts.map(amount => crewCount > 0 ? Math.round(amount / crewCount) : 0)
+      // Mingguan & bulanan per crew = split rata target grup (allocateCrewEven,
+      // sama dengan engine) — jadwal tidak selalu seimbang, hanya target
+      // harian yang mengikuti bobot shift.
+      const evenPerCrew = crewCount > 0
+        ? (total: number) => (allocateCrewEven(total, crewCount)[0] ?? 0)
+        : () => 0
+      const crewMonthlyTarget = engineGroup ? evenPerCrew(effMonthlyTarget) : (crewCount > 0 ? Math.round(effMonthlyTarget / crewCount) : 0)
+      const crewWeeklyTargets = engineGroup
+        ? [0, 1, 2, 3, 4].map(w => evenPerCrew(engineGroup.weekly[w]))
+        : wt.amounts.map(amount => crewCount > 0 ? Math.round(amount / crewCount) : 0)
 
       // Per-week achievements
       const weeklyDetails = weekRanges.map((wr, i) => {
         const targetPct = weeklyTargetPcts[i]
-        const weekTarget = wt.amounts[i] ?? 0
+        const weekTarget = engineGroup ? (engineGroup.weekly[i] ?? 0) : (wt.amounts[i] ?? 0)
         const weekTotal = group.crews.reduce((sum, c) => sum + (weekAggMaps[i].get(c.id) ?? 0), 0)
         const weekTiktok = group.crews.reduce((sum, c) => sum + (tkWeekOnlyMaps[i].get(c.id) ?? 0), 0)
         const achievement = weekTarget > 0 ? Math.min(Math.round((weekTotal / weekTarget) * 100), 999) : 0
@@ -521,7 +576,8 @@ export async function GET(request: NextRequest) {
         id: group.id,
         name: group.name,
         logo: group.logo,
-        monthlyTarget: group.monthlyTarget,
+        monthlyTarget: effMonthlyTarget,
+        allocationPct: engineGroup ? engineGroup.allocationPct : null,
         monthlyTotal: groupMonthTotal,
         tiktokMonthlyTotal: groupTiktokMonth,
         monthlyAchievement,
@@ -541,6 +597,8 @@ export async function GET(request: NextRequest) {
     const topCrews = sortedCrews.slice(0, 3)
 
     return NextResponse.json({
+      // true = target dari engine breakdown Toko→Zoning→Shift→Crew aktif
+      engineActive,
       crewStats: sortedCrews,
       totals: {
         ...totals,

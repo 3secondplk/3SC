@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import * as crypto from 'crypto'
+import { headers } from 'next/headers'
 import { logActivity } from '@/lib/activity-logger'
 
 // ─── Stateless JWT for serverless (Vercel) compatibility ───
@@ -78,11 +79,20 @@ export async function POST(request: NextRequest) {
 
     const token = createJWT({ adminId: admin.id, username: admin.username, name: admin.name })
 
+    // Secure flag hanya bila request benar-benar https (via proxy/gateway).
+    // Jangan pakai NODE_ENV — app sering diakses via http di sandbox/iframe,
+    // dan cookie Secure di http akan DITOLAK browser → 401 terus.
+    let isHttps = false
+    try {
+      const h = await headers()
+      isHttps = (h.get('x-forwarded-proto') || '').split(',')[0].trim() === 'https'
+    } catch { /* ignore */ }
+
     const { cookies } = await import('next/headers')
     const cookieStore = await cookies()
     cookieStore.set('admin_token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isHttps,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7,
       path: '/',
@@ -91,8 +101,11 @@ export async function POST(request: NextRequest) {
     // Log login activity (fire-and-forget)
     logActivity('LOGIN', { description: 'Login berhasil' }).catch(() => {})
 
+    // Token JUGA dikembalikan di body → client simpan di localStorage dan
+    // kirim via header Authorization (cookie bisa diblokir di iframe lintas-site).
     return NextResponse.json({
       success: true,
+      token,
       admin: { id: admin.id, username: admin.username, name: admin.name },
     })
   } catch (error) {
