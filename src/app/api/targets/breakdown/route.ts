@@ -109,7 +109,6 @@ export async function GET(request: NextRequest) {
       config: {
         monthlyTarget: ctx.config.monthlyTarget,
         weekPcts: [ctx.config.week1Pct, ctx.config.week2Pct, ctx.config.week3Pct, ctx.config.week4Pct, ctx.config.week5Pct],
-        dayPcts: ctx.config.dayPcts,
       },
       shiftTypes: ctx.shiftTypes,
       allocationSum: ctx.allocationSum,

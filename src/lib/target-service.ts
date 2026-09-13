@@ -6,6 +6,12 @@
 //
 // ENGINE AKTIF jika: StoreConfig ada & monthlyTarget > 0.
 // Jika tidak aktif → semua route jatuh ke perilaku legacy (equal split).
+//
+// DISTRIBUSI HARIAN = PER TANGGAL (mode tunggal): StoreConfig.dailyPctsJson
+// berisi JSON array 31 slot (% dari target bulanan, index 0 = tgl 1).
+// INVARIANT: Σ slot tanggal dalam Week-w PERSIS = weekPct minggu tsb
+// (divalidasi di API store-config); engine menjamin Σ target harian (Rp)
+// per minggu = target mingguan PERSIS via largest remainder.
 // ────────────────────────────────────────────────────────────────────────
 
 import { db } from '@/lib/db'
@@ -15,13 +21,32 @@ import {
   type MonthTargetResult,
 } from '@/lib/target-engine'
 
+/**
+ * Parse distribusi harian per tanggal (JSON array 31 slot) dari StoreConfig.
+ * Aman terhadap JSON rusak / panjang tidak sesuai → slot tidak valid = 0.
+ */
+export function parseDailyPctsJson(json: string | null | undefined): number[] {
+  const out = new Array<number>(31).fill(0)
+  if (!json) return out
+  try {
+    const arr: unknown = JSON.parse(json)
+    if (!Array.isArray(arr)) return out
+    for (let i = 0; i < Math.min(31, arr.length); i++) {
+      const v = Number(arr[i])
+      out[i] = Number.isFinite(v) && v > 0 ? v : 0
+    }
+    return out
+  } catch {
+    return out
+  }
+}
+
 export interface LoadedTargetContext {
   /** true jika StoreConfig terisi → hasil dari engine baru */
   engineActive: boolean
   config: {
     monthlyTarget: number
     week1Pct: number; week2Pct: number; week3Pct: number; week4Pct: number; week5Pct: number
-    dayPcts: number[] // [Sen,Sel,Rab,Kam,Jum,Sab,Min]
   } | null
   shiftTypes: Array<{ id: string; code: string; label: string; weight: number; sortOrder: number; isActive: boolean }>
   month: MonthTargetResult | null
@@ -50,11 +75,6 @@ export async function loadMonthTargets(year: number, monthIndex: number): Promis
     return { engineActive: false, config: null, shiftTypes, month: null, allocationSum }
   }
 
-  const dayPcts = [
-    config.dayPctMon, config.dayPctTue, config.dayPctWed, config.dayPctThu,
-    config.dayPctFri, config.dayPctSat, config.dayPctSun,
-  ]
-
   const prefix = `${year}-${String(monthIndex + 1).padStart(2, '0')}`
   const shifts = await db.crewShift.findMany({
     where: { tanggal: { gte: `${prefix}-01`, lte: `${prefix}-31` } },
@@ -71,7 +91,7 @@ export async function loadMonthTargets(year: number, monthIndex: number): Promis
     monthIndex,
     storeMonthlyTarget: config.monthlyTarget,
     weekPcts: [config.week1Pct, config.week2Pct, config.week3Pct, config.week4Pct, config.week5Pct],
-    dayPcts,
+    dailyPcts: parseDailyPctsJson(config.dailyPctsJson),
     groups: groups.map(g => ({
       id: g.id,
       allocationPct: Number(g.allocationPct) || 0,
@@ -90,7 +110,6 @@ export async function loadMonthTargets(year: number, monthIndex: number): Promis
       week3Pct: config.week3Pct,
       week4Pct: config.week4Pct,
       week5Pct: config.week5Pct,
-      dayPcts,
     },
     shiftTypes,
     month,

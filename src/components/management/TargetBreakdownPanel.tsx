@@ -23,7 +23,7 @@ import {
   Plus, RefreshCw, CheckCircle2, XCircle, AlertTriangle, Info, Eraser, ListChecks,
 } from 'lucide-react'
 import { fmtRp, fmtNum, fadeIn, safeFetch, getWIBDate, getWIBToday, monthNames } from '@/lib/cms-utils'
-import { allocateByWeights } from '@/lib/target-engine'
+import { allocateByWeights, daysInMonthOf, evenSplitDailyPcts, weekRange } from '@/lib/target-engine'
 import type {
   BreakdownData, GroupAllocationItem, ScheduleData, ShiftTypeItem, StoreConfigData,
 } from '@/lib/cms-types'
@@ -33,21 +33,22 @@ import { cn } from '@/lib/utils'
 
 const SESSION_MSG = 'Sesi berakhir, silakan login ulang'
 
-const DAY_NAMES = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
-const DEFAULT_DAY_PCTS = [3, 3, 3, 3, 3, 4.5, 4.5]
-
 // Config default saat install baru (tabel StoreConfig masih kosong — mis. deploy
 // Vercel tanpa seed): form tetap terisi dan tombol Simpan langsung aktif.
 // PUT /api/store-config otomatis CREATE row saat belum ada — jadi aman disimpan.
+// Distribusi harian PER TANGGAL default = BAGI RATA per minggu (Σ tanggal
+// tiap Week PERSIS = weekPct minggu tsb — invariant wajib, mode tunggal).
+const DEFAULT_WEEK_PCTS = [25, 21, 23, 26, 5]
+const FALLBACK_WIB = getWIBDate()
 const FALLBACK_CONFIG: StoreConfigData = {
   id: '__new__',
   monthlyTarget: 0,
-  week1Pct: 25,
-  week2Pct: 21,
-  week3Pct: 23,
-  week4Pct: 26,
-  week5Pct: 5,
-  dayPcts: DEFAULT_DAY_PCTS,
+  week1Pct: DEFAULT_WEEK_PCTS[0],
+  week2Pct: DEFAULT_WEEK_PCTS[1],
+  week3Pct: DEFAULT_WEEK_PCTS[2],
+  week4Pct: DEFAULT_WEEK_PCTS[3],
+  week5Pct: DEFAULT_WEEK_PCTS[4],
+  dailyPcts: evenSplitDailyPcts(DEFAULT_WEEK_PCTS, FALLBACK_WIB.getFullYear(), FALLBACK_WIB.getMonth()),
 }
 
 const scrollbarCls =
@@ -206,7 +207,8 @@ export default function TargetBreakdownPanel({ onChanged }: { onChanged?: () => 
   // Overlay edits (null = pakai nilai server) → refetch tidak menghapus edit user
   const [targetOverlay, setTargetOverlay] = useState<string | null>(null)
   const [weekOverlay, setWeekOverlay] = useState<(string | null)[]>([null, null, null, null, null])
-  const [dayOverlay, setDayOverlay] = useState<(string | null)[]>([null, null, null, null, null, null, null])
+  // Overlay edits distribusi harian PER TANGGAL (key = tanggal 1..31, sparse)
+  const [dailyOverlay, setDailyOverlay] = useState<Record<number, string>>({})
   const [allocOverlay, setAllocOverlay] = useState<Record<string, string>>({})
 
   // ── Shift types (Section 3) ──
@@ -316,23 +318,65 @@ export default function TargetBreakdownPanel({ onChanged }: { onChanged?: () => 
     ? [config.week1Pct, config.week2Pct, config.week3Pct, config.week4Pct, config.week5Pct]
     : [0, 0, 0, 0, 0]
   const weekEff = configWeekPcts.map((p, i) => weekOverlay[i] ?? String(p))
+  const weekNums = weekEff.map(v => parseNum(v))
   const monthlyTargetEff = targetOverlay ?? (config ? String(config.monthlyTarget) : '')
   const monthlyTargetNum = parseNum(monthlyTargetEff)
 
   const weekSum = weekEff.reduce((s, v) => s + parseNum(v), 0)
   const weekOk = Math.abs(weekSum - 100) < 0.001
 
-  // ── Distribusi harian (Senin..Minggu) — bobot relatif, dinormalisasi per minggu ──
-  const configDayPcts = config?.dayPcts && config.dayPcts.length === 7 ? config.dayPcts : DEFAULT_DAY_PCTS
-  const dayEff = configDayPcts.map((p, i) => dayOverlay[i] ?? String(p))
-  const dayWeights = dayEff.map(v => parseNum(v))
-  const dayWeightSum = dayWeights.reduce((s, w) => s + w, 0)
-  const dayOk = dayWeights.every(w => w >= 0 && w <= 100)
+  // ── Distribusi harian PER TANGGAL (31 slot, mode tunggal) — kelompok Week 1–5 ──
+  // Bulan aktif (WIB) menentukan 30/31 hari & komposisi minggu (W1=1–7 … W5=29+).
+  const wibNow = getWIBDate()
+  const curYear = wibNow.getFullYear()
+  const curMonthIdx = wibNow.getMonth()
+  const curDim = daysInMonthOf(curYear, curMonthIdx)
+  const configDailyPcts = config?.dailyPcts && config.dailyPcts.length === 31
+    ? config.dailyPcts
+    : new Array<number>(31).fill(0)
+  const dailyNums = Array.from({ length: 31 }, (_, i) => parseNum(dailyOverlay[i + 1] ?? String(configDailyPcts[i] ?? 0)))
 
-  // Preview target harian per hari: pakai target minggu penuh (W1) sbg contoh
-  const weekNums = weekEff.map(v => parseNum(v))
-  const w1Amount = allocateByWeights(monthlyTargetNum, weekNums)[0] ?? 0
-  const dayPreview = allocateByWeights(w1Amount, dayWeights)
+  const weekDates = useMemo(() => {
+    return [1, 2, 3, 4, 5].map(w => {
+      const [from, to] = weekRange(w, curDim)
+      const days: number[] = []
+      for (let d = from; d <= Math.min(to, curDim); d++) days.push(d)
+      return days
+    })
+  }, [curDim])
+
+  // INVARIANT WAJIB: Σ % tanggal dalam Week-w PERSIS = weekPct minggu tsb
+  // (toleransi 1e-4) — tidak boleh kurang atau lebih. Σ semua minggu = 100%
+  // otomatis mengikuti distribusi mingguan.
+  const dailyWeekSums = weekDates.map(days => days.reduce((s, d) => s + dailyNums[d - 1], 0))
+  const dailyWeekOk = weekDates.map((days, i) => days.length === 0 || Math.abs(dailyWeekSums[i] - weekNums[i]) < 0.001)
+  const dailyRangeOk = dailyNums.every(v => v >= 0 && v <= 100)
+  const dailyAllOk = dailyRangeOk && dailyWeekOk.every(ok => ok)
+  const dailyTotalSum = dailyWeekSums.reduce((s, v, i) => s + (weekDates[i].length > 0 ? v : 0), 0)
+
+  // Preview target mingguan (Rp) per Week — label tiap grup distribusi harian
+  const weekPreview = allocateByWeights(monthlyTargetNum, weekNums)
+
+  // Bagi rata: persentase minggu tsb dibagi EKSAK ke semua tanggalnya
+  // (Σ = weekPct minggu tsb — dijamin evenSplitDailyPcts, sisa → tgl terakhir).
+  const bagiRataWeek = (wIdx: number) => {
+    const days = weekDates[wIdx]
+    if (days.length === 0) return
+    const slots = evenSplitDailyPcts(weekNums, curYear, curMonthIdx)
+    setDailyOverlay(prev => {
+      const next = { ...prev }
+      days.forEach(d => { next[d] = String(slots[d - 1]) })
+      return next
+    })
+  }
+  const bagiRataSemua = () => {
+    const slots = evenSplitDailyPcts(weekNums, curYear, curMonthIdx)
+    setDailyOverlay(prev => {
+      const next = { ...prev }
+      weekDates.forEach(days => days.forEach(d => { next[d] = String(slots[d - 1]) }))
+      return next
+    })
+  }
 
   const allocEff = (a: GroupAllocationItem) => allocOverlay[a.id] ?? String(a.allocationPct)
   const allocWeights = allocations.map(a => parseNum(allocEff(a)))
@@ -347,7 +391,15 @@ export default function TargetBreakdownPanel({ onChanged }: { onChanged?: () => 
     configIssues.push('Target bulanan belum diisi')
   }
   if (!weekOk) configIssues.push(`Σ distribusi mingguan harus 100% (saat ini ${sumText(weekSum)}%)`)
-  if (!dayOk) configIssues.push('Persentase harian harus angka 0–100')
+  if (!dailyRangeOk) configIssues.push('Persentase harian per tanggal harus angka 0–100')
+  if (!dailyAllOk) {
+    const bad = weekDates
+      .map((days, i) => ({ w: i + 1, days, sum: dailyWeekSums[i], target: weekNums[i] }))
+      .filter(x => x.days.length > 0 && Math.abs(x.sum - x.target) >= 0.001)
+    configIssues.push(
+      `Σ distribusi harian tiap minggu harus = mingguan (${bad.map(b => `W${b.w}: ${sumText(b.sum)}% ≠ ${sumText(b.target)}%`).join(', ')})`,
+    )
+  }
   if (!allocOk) configIssues.push(`Σ alokasi zoning harus 100% (saat ini ${sumText(allocSum)}%)`)
 
   const saveConfig = async () => {
@@ -364,7 +416,7 @@ export default function TargetBreakdownPanel({ onChanged }: { onChanged?: () => 
       week3Pct: parseNum(weekEff[2]),
       week4Pct: parseNum(weekEff[3]),
       week5Pct: parseNum(weekEff[4]),
-      dayPcts: dayWeights,
+      dailyPcts: dailyNums,
       allocations:
         allocations.length > 0
           ? allocations.map(a => ({ groupId: a.id, allocationPct: parseNum(allocEff(a)) }))
@@ -375,7 +427,7 @@ export default function TargetBreakdownPanel({ onChanged }: { onChanged?: () => 
       toast.error(res.error)
       return
     }
-    toast.success('Target toko, distribusi mingguan & harian tersimpan')
+    toast.success('Target toko, distribusi mingguan & harian per tanggal tersimpan')
     setConfigLoading(true)
     await loadStoreConfig()
     if (focusDate) await loadBreakdown(focusDate)
@@ -570,7 +622,8 @@ export default function TargetBreakdownPanel({ onChanged }: { onChanged?: () => 
               Target Bulanan Toko
             </CardTitle>
             <CardDescription>
-              Sumber utama seluruh hierarki target. Distribusi mingguan harus berjumlah 100%.
+              Sumber utama seluruh hierarki target. Σ distribusi mingguan = 100%, dan Σ distribusi harian
+              tiap minggu harus PERSIS sama dengan mingguan-nya (tidak boleh kurang atau lebih).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 p-0">
@@ -583,9 +636,10 @@ export default function TargetBreakdownPanel({ onChanged }: { onChanged?: () => 
                     <Info className="h-4 w-4" />
                     <AlertTitle className="text-sm font-bold">Konfigurasi belum ada — install baru terdeteksi</AlertTitle>
                     <AlertDescription className="text-xs">
-                      Nilai default sudah diisi otomatis (minggu 25/21/23/26/5 % · harian 3/3/3/3/3/4,5/4,5 %).
-                      Isi <b>Target Bulanan</b>, sesuaikan <b>Alokasi Zoning</b> di kartu berikutnya (Σ = 100%),
-                      lalu klik Simpan. Klik simpan kapan saja untuk melihat pesan validasi bila ada yang kurang.
+                      Nilai default sudah diisi otomatis (minggu 25/21/23/26/5 % · distribusi harian per tanggal
+                      dibagi rata per minggu). Isi <b>Target Bulanan</b>, sesuaikan <b>Alokasi Zoning</b> di kartu
+                      berikutnya (Σ = 100%), lalu klik Simpan. Klik simpan kapan saja untuk melihat pesan
+                      validasi bila ada yang kurang.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -652,56 +706,89 @@ export default function TargetBreakdownPanel({ onChanged }: { onChanged?: () => 
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Label className="text-xs font-semibold">Distribusi Harian per Hari (%)</Label>
-                    <Badge variant="secondary" className="text-[10px] tabular-nums">
-                      Σ minggu penuh: {sumText(dayWeightSum)}%
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
-                    {DAY_NAMES.map((lbl, i) => (
-                      <div key={lbl} className="space-y-1">
-                        <Label htmlFor={`tb-d${i}`} className="text-[11px] text-muted-foreground">
-                          {lbl}
-                        </Label>
-                        <Input
-                          id={`tb-d${i}`}
-                          type="number"
-                          inputMode="decimal"
-                          step="0.5"
-                          min={0}
-                          max={100}
-                          value={dayEff[i]}
-                          onChange={e =>
-                            setDayOverlay(prev => prev.map((v, idx) => (idx === i ? e.target.value : v)))
-                          }
-                          className="h-11 text-center tabular-nums sm:h-9"
-                        />
-                      </div>
-                    ))}
+                    <Label className="text-xs font-semibold">
+                      Distribusi Harian per Tanggal (%) — {monthNames[curMonthIdx]} {curYear}
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      {dailyAllOk ? (
+                        <Badge className="border-transparent bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                          <CheckCircle2 className="h-3 w-3" /> Σ {sumText(dailyTotalSum)}%
+                        </Badge>
+                      ) : (
+                        <Badge className="border-transparent bg-destructive text-white">
+                          <XCircle className="h-3 w-3" /> Σ {sumText(dailyTotalSum)}%
+                        </Badge>
+                      )}
+                      <Button type="button" variant="outline" size="sm" onClick={bagiRataSemua} className="h-8 text-[11px]">
+                        Bagi rata semua
+                      </Button>
+                    </div>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Bobot relatif per hari — otomatis dinormalisasi dalam tiap minggu (Σ target harian =
-                    target mingguan, tetap 0 selisih). Contoh: Senin 3% &amp; Sabtu 4,5% → Sabtu mendapat
-                    porsi 1,5× hari kerja.
+                    Atur persentase tiap tanggal ({curDim} hari) dikelompokkan per minggu — Σ tanggal dalam
+                    tiap minggu harus PERSIS sama dengan distribusi mingguan di atas (tidak boleh kurang atau
+                    lebih). Tombol <b>Bagi rata</b> membagi target mingguan ke semua tanggalnya secara otomatis.
                   </p>
-                  {monthlyTargetNum > 0 && dayWeightSum > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Target hari (contoh minggu penuh):
-                      </span>
-                      {DAY_NAMES.map((n, i) => (
-                        <Badge
-                          key={n}
-                          variant="secondary"
-                          className="text-[10px] font-semibold tabular-nums"
-                          title={`Target harian ${n} (minggu penuh)`}
-                        >
-                          {n.slice(0, 3)} ≈ {fmtRp(dayPreview[i] ?? 0)}
-                        </Badge>
-                      ))}
-                    </div>
+                  {weekDates.map((days, wIdx) =>
+                    days.length === 0 ? null : (
+                      <div key={wIdx} className="space-y-2 rounded-lg border p-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary" className="text-[10px] font-bold">
+                              Week {wIdx + 1}
+                            </Badge>
+                            <span className="text-[11px] text-muted-foreground">
+                              tgl {days[0]}–{days[days.length - 1]} · mingguan {fmtNum(weekNums[wIdx])}% ≈{' '}
+                              {fmtRp(weekPreview[wIdx] ?? 0)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {dailyWeekOk[wIdx] ? (
+                              <Badge className="border-transparent bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                <CheckCircle2 className="h-3 w-3" /> Σ {sumText(dailyWeekSums[wIdx])}%
+                              </Badge>
+                            ) : (
+                              <Badge className="border-transparent bg-destructive text-white">
+                                <XCircle className="h-3 w-3" /> Σ {sumText(dailyWeekSums[wIdx])}% ≠{' '}
+                                {sumText(weekNums[wIdx])}%
+                              </Badge>
+                            )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => bagiRataWeek(wIdx)}
+                              className="h-7 px-2 text-[11px]"
+                            >
+                              Bagi rata
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
+                          {days.map(d => (
+                            <div key={d} className="space-y-0.5">
+                              <Label htmlFor={`tb-dd${d}`} className="text-[10px] text-muted-foreground">
+                                Tgl {d}
+                              </Label>
+                              <Input
+                                id={`tb-dd${d}`}
+                                type="number"
+                                inputMode="decimal"
+                                step="0.1"
+                                min={0}
+                                max={100}
+                                aria-label={`Distribusi harian tanggal ${d} (%)`}
+                                value={dailyOverlay[d] ?? String(Number((configDailyPcts[d - 1] ?? 0).toFixed(4)))}
+                                onChange={e => setDailyOverlay(prev => ({ ...prev, [d]: e.target.value }))}
+                                className="h-11 text-center text-xs tabular-nums sm:h-9"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ),
                   )}
                 </div>
 
@@ -1173,8 +1260,7 @@ export default function TargetBreakdownPanel({ onChanged }: { onChanged?: () => 
               </Button>
             </div>
             <CardDescription>
-              Hitungan engine realtime: Toko → Minggu → Hari → Zoning → Crew. Tanpa snapshot. Target
-              harian crew mengikuti bobot shift; target <b>mingguan &amp; bulanan crew = target zoning ÷ jumlah crew</b> (sama rata, apa pun jadwalnya).
+              Hitungan engine realtime: Toko → Minggu → Hari → Zoning → Crew. Tanpa snapshot.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 p-0">

@@ -193,8 +193,9 @@ export interface StoreConfigData {
   id?: string
   monthlyTarget: number
   week1Pct: number; week2Pct: number; week3Pct: number; week4Pct: number; week5Pct: number
-  /** Bobot relatif per hari (Senin..Minggu) — Σ bebas, dinormalisasi engine */
-  dayPcts?: number[]
+  /** Distribusi harian PER TANGGAL — 31 slot (index 0 = tgl 1), % dari target
+   *  bulanan. Wajib: Σ slot tanggal dalam Week-w = weekPct minggu tsb (exact). */
+  dailyPcts?: number[]
   updatedAt?: string
 }
 
@@ -233,7 +234,7 @@ export interface BreakdownData {
   message?: string
   year: number; month: number; daysInMonth: number
   focusDate: string; focusWeek: number
-  config: { monthlyTarget: number; weekPcts: number[]; dayPcts?: number[] } | null
+  config: { monthlyTarget: number; weekPcts: number[] } | null
   shiftTypes: ShiftTypeItem[]
   allocationSum: number
   store: {

@@ -1,9 +1,9 @@
 'use client'
 
 // ─── Halaman Publik: Target & Jadwal (read-only, tanpa login) ───────────
-// Menampilkan hasil breakdown Toko → Minggu → Hari → Zoning → Crew beserta
-// roster jadwal shift. PENGATURAN tetap di Management → Target & Jadwal.
-// Sumber data: /api/public/target-schedule (publik, read-only).
+// Menampilkan hasil breakdown Toko → Minggu → Hari (per tanggal) → Zoning →
+// Crew beserta roster jadwal shift. PENGATURAN tetap di Management → Target &
+// Jadwal. Sumber data: /api/public/target-schedule (publik, read-only).
 
 import { Fragment, useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
@@ -25,8 +25,6 @@ import { fmtRp, fmtNum, fadeIn, safeFetch, getWIBToday, getWIBDate, monthNames }
 import { shiftBadgeClass } from '@/components/management/TargetBreakdownPanel'
 import type { BreakdownData, ScheduleData } from '@/lib/cms-types'
 import { cn } from '@/lib/utils'
-
-const DAY_NAMES = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
 
 const scrollbarCls =
   '[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/25'
@@ -151,8 +149,13 @@ export default function PublicTargetSchedule() {
   const bd = breakdown
   const engineActive = !!bd?.engineActive
   const weeksPcts = bd?.config?.weekPcts ?? [0, 0, 0, 0, 0]
-  const dayPcts = bd?.config?.dayPcts && bd.config.dayPcts.length === 7 ? bd.config.dayPcts : []
   const currentWeek = bd?.focusWeek ?? 1
+  const focusDay = Number(focusDate.slice(8, 10))
+  // Target harian (Rp) minggu fokus — dari engine (Σ = target mingguan persis)
+  const weekDailyTargets = useMemo(
+    () => (bd?.engineActive && bd.store ? bd.store.dailyTargets.filter(d => d.week === bd.focusWeek) : []),
+    [bd],
+  )
 
   // Crew tanpa satu pun shift di bulan terpilih
   const crewsWithoutShift = useMemo(() => {
@@ -327,8 +330,8 @@ export default function PublicTargetSchedule() {
             <CardHeader className="p-0 pb-3">
               <CardTitle className="text-base font-bold">Distribusi Target</CardTitle>
               <CardDescription>
-                Persentase pembagian target bulanan ke tiap minggu dan bobot tiap hari (dinormalisasi otomatis
-                per minggu — Σ target harian = target mingguan, 0 selisih).
+                Persentase pembagian target bulanan ke tiap minggu (diset admin per tanggal, dikelompokkan
+                Week 1–5 — Σ target harian = target mingguan, 0 selisih).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-0">
@@ -347,13 +350,21 @@ export default function PublicTargetSchedule() {
                   ))}
                 </div>
               </div>
-              {dayPcts.length === 7 && (
+              {weekDailyTargets.length > 0 && (
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold">Bobot Per Hari (Senin–Minggu)</p>
+                  <p className="mb-1.5 text-xs font-semibold">Target Harian — Minggu ke-{bd.focusWeek}</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {DAY_NAMES.map((n, i) => (
-                      <Badge key={n} variant="outline" className="text-[11px] tabular-nums">
-                        {n.slice(0, 3)}: {fmtNum(dayPcts[i])}%
+                    {weekDailyTargets.map(d => (
+                      <Badge
+                        key={d.date}
+                        variant="outline"
+                        className={cn(
+                          'text-[11px] tabular-nums',
+                          d.day === focusDay && 'border-[#E14227] bg-[#E14227]/10 font-bold text-[#E14227]',
+                        )}
+                        title={d.date}
+                      >
+                        {d.day}: {fmtRp(d.target)}
                       </Badge>
                     ))}
                   </div>
@@ -375,8 +386,9 @@ export default function PublicTargetSchedule() {
               </CardTitle>
               <CardDescription>
                 Target tanggal {bd.focusDate} (minggu ke-{bd.focusWeek}). Target harian crew mengikuti bobot
-                shift — crew Off / belum dijadwalkan mendapat Rp0 hari itu dan porsinya dialihkan ke crew
-                yang ber-shift. Target <b>mingguan &amp; bulanan crew = target zoning ÷ jumlah crew</b> (sama rata).
+                shift; target mingguan &amp; bulanan crew = target zoning ÷ jumlah crew (sama rata). Crew Off /
+                belum dijadwalkan mendapat target Rp0 hari itu — porsinya didistribusikan ke crew yang
+                ber-shift sesuai bobot.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-0">
@@ -561,9 +573,8 @@ export default function PublicTargetSchedule() {
                 <AlertTitle className="text-sm font-bold">Crew tanpa jadwal bulan ini</AlertTitle>
                 <AlertDescription className="text-xs">
                   {crewsWithoutShift.join(', ')} — belum punya satu pun shift di {monthNames[(month - 1) % 12]}.
-                  Target harian crew ini Rp0 setiap hari (porsinya dialihkan ke crew yang terjadwal sesuai
-                  bobot), namun target <b>mingguan &amp; bulanan tetap sama rata</b> dengan crew lain di
-                  zoning-nya (target zoning ÷ jumlah crew). Atur jadwal di Management → Target &amp; Jadwal.
+                  Crew tanpa jadwal mendapat target Rp0 setiap hari; porsi targetnya didistribusikan ke crew
+                  yang terjadwal sesuai bobot. Atur jadwal di Management → Target &amp; Jadwal.
                 </AlertDescription>
               </Alert>
             )}

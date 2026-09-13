@@ -3,7 +3,8 @@ import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { resolveWeekTargets } from '@/lib/week-targets'
 import { loadMonthTargets } from '@/lib/target-service'
-import { allocateCrewEven, type EngineCrewTarget, type EngineGroupTarget } from '@/lib/target-engine'
+import { allocateCrewEven } from '@/lib/target-engine'
+import type { EngineCrewTarget, EngineGroupTarget } from '@/lib/target-engine'
 
 // Helper: get week number (1-5) based on day of month
 function getWeekNumber(dayOfMonth: number, daysInMonth: number): number {
@@ -540,15 +541,13 @@ export async function GET(request: NextRequest) {
         : 0
 
       const crewCount = group.crews.length
-      // Mingguan & bulanan per crew = split rata target grup (allocateCrewEven,
-      // sama dengan engine) — jadwal tidak selalu seimbang, hanya target
-      // harian yang mengikuti bobot shift.
-      const evenPerCrew = crewCount > 0
-        ? (total: number) => (allocateCrewEven(total, crewCount)[0] ?? 0)
-        : () => 0
-      const crewMonthlyTarget = engineGroup ? evenPerCrew(effMonthlyTarget) : (crewCount > 0 ? Math.round(effMonthlyTarget / crewCount) : 0)
+      // ENGINE AKTIF: header crew target = split SAMA RATA target zoning
+      // (largest remainder, konsisten dengan engine Level 4b — fix-5).
+      const crewMonthlyTarget = crewCount > 0
+        ? (allocateCrewEven(effMonthlyTarget, crewCount)[0] ?? 0)
+        : 0
       const crewWeeklyTargets = engineGroup
-        ? [0, 1, 2, 3, 4].map(w => evenPerCrew(engineGroup.weekly[w]))
+        ? engineGroup.weekly.map(w => (crewCount > 0 ? allocateCrewEven(w, crewCount)[0] ?? 0 : 0))
         : wt.amounts.map(amount => crewCount > 0 ? Math.round(amount / crewCount) : 0)
 
       // Per-week achievements

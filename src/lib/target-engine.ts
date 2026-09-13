@@ -4,24 +4,23 @@
 //
 //   Target Bulanan TOKO  (StoreConfig.monthlyTarget — sumber utama)
 //     → Distribusi MINGGUAN   (week1..5Pct, Σ = 100%)
-//       → Target HARIAN       (minggu dibagi rata ke tanggal dalam minggu tsb)
+//       → Distribusi HARIAN   (persen PER TANGGAL 30–31 hari, kelompok Week 1–5;
+//         Σ tanggal dalam Week-w PERSIS = weekPct minggu tsb — mode tunggal)
 //         → ZONING / Group    (allocationPct, Σ = 100%)
-//           → CREW HARIAN     (bobot shift dari ShiftType × jadwal CrewShift)
+//           → CREW            (bobot shift dari ShiftType × jadwal CrewShift)
 //
 // BUSINESS RULE (dijamin oleh largest remainder allocation, uang integer Rupiah):
 //   Σ Target Crew        = Target Group
 //   Σ Target Group       = Target Toko
 //   → tidak boleh ada selisih (0 Rupiah) di setiap level & periode.
 //
-// ATURAN PERIODE PER CREW (fix "target mingguan/bulanan sama rata"):
-//   - Target MINGGUAN crew = Target mingguan GRUP ÷ jumlah crew di grup
-//   - Target BULANAN  crew = Target bulanan  GRUP ÷ jumlah crew di grup
-//   (split rata — TIDAK tergantung jadwal, karena jadwal antar crew tidak
-//    selalu seimbang. Yang membedakan antar crew HANYA target HARIAN,
-//    yang tetap mengikuti bobot shift per tanggal.)
-//   Konsekuensi: Σ target harian satu crew selama seminggu ≠ target
-//   mingguan crew tsb (ini BY DESIGN — harian operasional, mingguan/
-//   bulanan porsi adil per crew).
+// ATURAN TARGET PER CREW (fix-5):
+//   - HARIAN    → mengikuti BOBOT SHIFT × jadwal crew pada tanggal tsb.
+//   - MINGGUAN  → target mingguan zoning ÷ jumlah crew (SAMA RATA, largest
+//                 remainder) — jadwal antar crew tidak selalu seimbang, jadi
+//                 agregat mingguan tidak boleh mengikuti bobot shift.
+//   - BULANAN   → target bulanan zoning ÷ jumlah crew (SAMA RATA, largest
+//                 remainder) — Σ crew = target zoning PERSIS di semua periode.
 //
 // PRINSIP PENTING:
 // - TIDAK ada snapshot target crew / histori assignment. Semua dihitung
@@ -158,11 +157,32 @@ export function wibNowParts(now: Date = new Date()): { year: number; monthIndex:
 }
 
 /**
- * Index hari dalam seminggu (0=Senin .. 6=Minggu) untuk tanggal tertentu.
- * Dipakai untuk bobot distribusi harian per hari (Senin..Minggu).
+ * Distribusi harian default "BAGI RATA": bagi persentase tiap minggu secara
+ * EKSAK ke seluruh tanggal dalam minggu tsb (presisi 4 desimal, sisa diberikan
+ * ke tanggal terakhir minggu) sehingga Σ slot minggu-w PERSIS = weekPcts[w-1]
+ * — tidak boleh kurang atau lebih. Dipakai UI (tombol Bagi rata), fallback
+ * config baru, dan seed.
+ *
+ * Return: 31 slot (index 0 = tgl 1 .. 30 = tgl 31); tanggal di luar panjang
+ * bulan = 0; minggu tanpa tanggal (mis. W5 di Feb 28 hari) dibiarkan 0.
  */
-export function weekdayIndexMon0(year: number, monthIndex: number, day: number): number {
-  return (new Date(year, monthIndex, day).getDay() + 6) % 7
+export function evenSplitDailyPcts(weekPcts: number[], year: number, monthIndex: number): number[] {
+  const dim = daysInMonthOf(year, monthIndex)
+  const out = new Array<number>(31).fill(0)
+  for (let w = 1; w <= 5; w++) {
+    const [from, to] = weekRange(w, dim)
+    const dayNums: number[] = []
+    for (let d = from; d <= Math.min(to, dim); d++) dayNums.push(d)
+    if (dayNums.length === 0) continue
+    const totalBp = Math.round(Math.max(0, Number(weekPcts?.[w - 1]) || 0) * 10000) // basis point 4 desimal
+    const n = dayNums.length
+    const base = Math.floor(totalBp / n)
+    const rem = totalBp - base * n
+    dayNums.forEach((d, i) => {
+      out[d - 1] = (base + (i >= n - rem ? 1 : 0)) / 10000
+    })
+  }
+  return out
 }
 
 // ─────────────── Level 1–2: Toko → Minggu → Harian ───────────────
@@ -181,24 +201,33 @@ export interface StorePeriodTargets {
 }
 
 /**
- * Target Bulanan Toko → per minggu (pct, largest remainder) → per tanggal
- * (distribusi dalam minggu memakai BOBOT HARI — Senin..Minggu, mis.
- * Sen 3 / Sab 4.5 / Min 4.5 — dinormalisasi sehingga Σ harian = target
- * mingguan PERSIS; jika semua bobot 0 → split rata).
- * Σ daily = Σ weekly = monthly.
+ * Target Bulanan Toko → per minggu (pct, largest remainder) → per TANGGAL
+ * (distribusi dalam minggu memakai persentase per tanggal dari konfigurasi —
+ * 31 slot, MODE TUNGGAL pengganti bobot per hari-minggu).
+ *
+ * INVARIANT (dijamin largest remainder di tiap level):
+ *   Σ target harian tanggal dalam Week-w = target mingguan Week-w PERSIS
+ *   → Σ daily = Σ weekly = monthly (tidak boleh kurang atau lebih).
+ * Konfigurasi % per tanggal WAJIB memenuhi Σ pct Week-w = weekPcts[w-1]
+ * (divalidasi UI & API store-config); bila minggu tsb semua slot 0
+ * (belum diatur) → fallback split rata dalam minggu tsb.
  */
 export function computeStoreDailyTargets(
   monthlyTarget: number,
   weekPcts: number[], // [w1..w5]
   year: number,
   monthIndex: number, // 0-based
-  dayPcts?: number[], // [Sen,Sel,Rab,Kam,Jum,Sab,Min] — bobot relatif (opsional)
+  dailyPcts?: number[], // [tgl1..tgl31] — % dari target bulanan (opsional)
 ): StorePeriodTargets {
   const total = Math.max(0, Math.round(Number(monthlyTarget) || 0))
   const dim = daysInMonthOf(year, monthIndex)
   const pcts = [0, 1, 2, 3, 4].map(i => Math.max(0, Number(weekPcts?.[i]) || 0))
-  const dayWeightsCfg = [0, 1, 2, 3, 4, 5, 6].map(i => Math.max(0, Number(dayPcts?.[i]) || 0))
-  const dayWeightSum = dayWeightsCfg.reduce((s, w) => s + w, 0)
+  const dailyCfg = new Array<number>(31).fill(0)
+  if (Array.isArray(dailyPcts)) {
+    for (let i = 0; i < Math.min(31, dailyPcts.length); i++) {
+      dailyCfg[i] = Math.max(0, Number(dailyPcts[i]) || 0)
+    }
+  }
 
   // Week tanpa satu pun tanggal (mis. W5 di Feb 28 hari) → bobot 0
   const weekHasDays = [1, 2, 3, 4, 5].map(w => {
@@ -216,12 +245,11 @@ export function computeStoreDailyTargets(
     const dayNums: number[] = []
     for (let d = from; d <= Math.min(to, dim); d++) dayNums.push(d)
     if (dayNums.length === 0) continue
-    // Bobot per tanggal: dari konfigurasi per-hari (Senin..Minggu).
-    // Semua bobot 0 / tidak dikonfigurasi → split rata (weight 1).
-    const weights = dayWeightSum > 0
-      ? dayNums.map(d => dayWeightsCfg[weekdayIndexMon0(year, monthIndex, d)])
-      : dayNums.map(() => 1)
-    const amounts = allocateByWeights(weekly[w - 1], weights)
+    // Bobot per TANGGAL dari konfigurasi distribusi harian (31 slot).
+    // Semua slot minggu tsb 0 / tidak dikonfigurasi → split rata (weight 1).
+    const weights = dayNums.map(d => dailyCfg[d - 1])
+    const sumW = weights.reduce((s, x) => s + x, 0)
+    const amounts = allocateByWeights(weekly[w - 1], sumW > 0 ? weights : dayNums.map(() => 1))
     dayNums.forEach((d, idx) => {
       daily.push({ date: isoDate(year, monthIndex, d), day: d, week: w, target: amounts[idx] })
     })
@@ -229,6 +257,16 @@ export function computeStoreDailyTargets(
   daily.sort((a, b) => a.day - b.day)
 
   return { monthly: total, weekly, daily }
+}
+
+/**
+ * Split SAMA RATA total grup ke `crewCount` crew (largest remainder — integer
+ * Rupiah, Σ hasil = total PERSIS). Dipakai untuk target MINGGUAN & BULANAN per
+ * crew: jadwal antar crew tidak selalu seimbang, sehingga HANYA target harian
+ * yang mengikuti bobot shift; mingguan & bulanan wajib sama rata (fix-5).
+ */
+export function allocateCrewEven(groupTotal: number, crewCount: number): number[] {
+  return allocateByWeights(groupTotal, new Array(Math.max(0, crewCount)).fill(1))
 }
 
 // ─────────────── Level 3: Toko Harian → Zoning (Group) ───────────────
@@ -246,9 +284,6 @@ export function allocateGroupDaily(storeDaily: number, allocationPcts: number[])
  * - Σ bobot > 0 → Σ crew = groupDaily PERSIS.
  * - Σ bobot = 0 (semua Off / tanpa jadwal terisi) → semua 0 + ditandai
  *   `unassignedAmount` agar grup tetap transparan (tidak ada leak diam-diam).
- *
- * HANYA untuk level HARIAN. Target mingguan & bulanan crew dihitung
- * terpisah sebagai split rata (lihat allocateCrewEven).
  */
 export function allocateCrewDaily(
   groupDaily: number,
@@ -260,16 +295,6 @@ export function allocateCrewDaily(
     return { amounts: shiftWeights.map(() => 0), unassignedAmount: Math.max(0, Math.round(groupDaily || 0)) }
   }
   return { amounts: allocateByWeights(groupDaily, shiftWeights), unassignedAmount: 0 }
-}
-
-/**
- * Split RATA target grup ke seluruh crew dalam grup (largest remainder,
- * integer Rupiah, Σ hasil = total PERSIS).
- * Dipakai untuk target MINGGUAN & BULANAN per crew — semua crew dalam
- * grup mendapat porsi sama besar, apa pun jadwalnya.
- */
-export function allocateCrewEven(groupTotal: number, crewCount: number): number[] {
-  return allocateByWeights(groupTotal, new Array(Math.max(0, crewCount)).fill(1))
 }
 
 // ─────────────── Full month computation (engine utama) ───────────────
@@ -285,8 +310,10 @@ export interface MonthTargetInput {
   monthIndex: number // 0-based
   storeMonthlyTarget: number
   weekPcts: number[] // [w1..w5]
-  /** Bobot harian Senin..Minggu (mis. 3,3,3,3,3,4.5,4.5). Opsional → rata. */
-  dayPcts?: number[] // [Sen,Sel,Rab,Kam,Jum,Sab,Min]
+  /** Distribusi harian PER TANGGAL — 31 slot (index 0 = tgl 1), % dari target
+   *  bulanan. Wajib: Σ slot tanggal dalam Week-w = weekPcts[w-1] (exact —
+   *  divalidasi UI & API). Opsional → split rata dalam tiap minggu. */
+  dailyPcts?: number[] // [tgl1..tgl31]
   groups: EngineGroupInput[] // urutan stabil (createdAt asc) → deterministik
   /** key: `${crewId}|${yyyy-mm-dd}` → shiftCode. Crew tanpa entry = belum dijadwalkan. */
   shiftByCrewDate: Map<string, string>
@@ -338,7 +365,7 @@ export function computeMonthTargets(input: MonthTargetInput): MonthTargetResult 
     input.weekPcts,
     year,
     monthIndex,
-    input.dayPcts,
+    input.dailyPcts,
   )
 
   const groups = new Map<string, EngineGroupTarget>()
@@ -408,36 +435,30 @@ export function computeMonthTargets(input: MonthTargetInput): MonthTargetResult 
         const crewTarget = gTarget.crews.get(crewIds[ci])!
         const amt = crewAmounts[ci] || 0
         crewTarget.daily.set(date, (crewTarget.daily.get(date) || 0) + amt)
+        crewTarget.monthly += amt
+        crewTarget.weekly[dayTarget.week - 1] += amt
         crewTarget.shiftByDate.set(date, shiftCodes[ci] || '')
       }
     }
   }
 
-  // ── Level 4b: Target MINGGUAN & BULANAN per crew = split rata grup ──
-  // Jadwal tidak selalu seimbang → weekly/monthly TIDAK diakumulasi dari
-  // harian (yang shift-weighted), melainkan dibagi rata: target grup ÷
-  // jumlah crew. Yang membedakan antar crew hanya target harian.
-  for (const gInput of input.groups) {
-    const gTarget = groups.get(gInput.id)!
-    const crewIds = gInput.crewIds
-    if (crewIds.length === 0) continue
-
-    // Mingguan: split rata tiap minggu (Σ crew minggu-W = grup minggu-W)
-    for (let w = 0; w < 5; w++) {
-      if (gTarget.weekly[w] <= 0) continue
-      const shares = allocateCrewEven(gTarget.weekly[w], crewIds.length)
-      crewIds.forEach((cid, i) => {
-        gTarget.crews.get(cid)!.weekly[w] = shares[i] || 0
-      })
-    }
-
-    // Bulanan: split rata (Σ crew bulanan = grup bulanan)
-    if (gTarget.monthly > 0) {
-      const monthShares = allocateCrewEven(gTarget.monthly, crewIds.length)
-      crewIds.forEach((cid, i) => {
-        gTarget.crews.get(cid)!.monthly = monthShares[i] || 0
-      })
-    }
+  // ── Level 4b: Target MINGGUAN & BULANAN per crew = target zoning ÷ jumlah crew ──
+  // Akumulasi harian shift-weighted membuat target mingguan/bulanan crew
+  // TIDAK sama rata (jadwal tidak seimbang, mis. 1 crew Full vs 1 crew Pagi).
+  // ATURAN (fix-5): hanya target HARIAN yang mengikuti bobot shift; target
+  // MINGGUAN & BULANAN crew di-OVERWRITE dengan split SAMA RATA dari target
+  // zoning (largest remainder → Σ crew = target zoning PERSIS, 0 selisih).
+  for (const g of groups.values()) {
+    const crewIds = [...g.crews.keys()]
+    const n = crewIds.length
+    if (n === 0) continue
+    const monthlySplit = allocateCrewEven(g.monthly, n)
+    const weeklySplits = g.weekly.map(wTotal => allocateCrewEven(wTotal, n))
+    crewIds.forEach((cid, i) => {
+      const c = g.crews.get(cid)!
+      c.monthly = monthlySplit[i]
+      c.weekly = weeklySplits.map(split => split[i])
+    })
   }
 
   // ── Verifikasi balance ──

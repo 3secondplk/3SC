@@ -1,7 +1,6 @@
 // ─────────────────────────────────────────────────────────
-// CMS Crew Management System — Prisma Schema (PostgreSQL)
-// Untuk deploy Vercel + Postgres (Vercel Postgres / Neon / Supabase).
-// Fitur:
+// CMS Crew Management System — Prisma Schema (SQLite sandbox)
+// Diadaptasi dari repo 3SC (PostgreSQL) + fitur baru:
 // TARGET BREAKDOWN: Toko → Zoning (Group) → Shift → Crew
 //
 // Prinsip desain (NO SNAPSHOT / NO HISTORY):
@@ -76,17 +75,13 @@ model StoreConfig {
   week3Pct      Float    @default(23)
   week4Pct      Float    @default(26)
   week5Pct      Float    @default(5)
-  // Distribusi harian per hari dalam seminggu — BOBOT RELATIF (bukan share
-  // wajib 100%). Contoh: Sen 3, Sel 3, ..., Sab 4.5, Min 4.5 → weekend dapat
-  // porsi lebih besar (rasio 1.5×). Engine menormalisasi bobot ini DI DALAM
-  // tiap minggu sehingga Σ Target Harian = Target Mingguan tetap PERSIS.
-  dayPctMon     Float    @default(3)
-  dayPctTue     Float    @default(3)
-  dayPctWed     Float    @default(3)
-  dayPctThu     Float    @default(3)
-  dayPctFri     Float    @default(3)
-  dayPctSat     Float    @default(4.5)
-  dayPctSun     Float    @default(4.5)
+  // Distribusi harian PER TANGGAL (% dari target bulanan) — JSON array 31 slot,
+  // index 0 = tgl 1 .. index 30 = tgl 31 (slot tanggal di luar panjang bulan
+  // diabaikan engine). MODE TUNGGAL — menggantikan bobot per hari-minggu lama
+  // (dayPctMon..Sun). INVARIANT WAJIB (divalidasi UI & API):
+  //   Σ slot tanggal dalam Week-w PERSIS = weekPct minggu tsb (tanpa selisih)
+  //   → Σ semua minggu = 100% otomatis mengikuti distribusi mingguan.
+  dailyPctsJson String @default("")
   updatedAt     DateTime @updatedAt
 }
 
