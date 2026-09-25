@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { TabsContent } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -341,7 +342,8 @@ const ExportTab = React.memo(function ExportTab({
 
   if (initialLoading) {
     return (
-      <motion.div {...stagger} className="space-y-5 mt-4 sm:mt-6">
+      <TabsContent value="export" className="mt-4 sm:mt-6 pb-24 md:pb-8">
+      <motion.div {...stagger} className="space-y-5">
         <Card className="border-0 shadow-lg glass-card">
           <CardContent className="p-4 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -372,6 +374,7 @@ const ExportTab = React.memo(function ExportTab({
           </CardContent>
         </Card>
       </motion.div>
+      </TabsContent>
     )
   }
 
@@ -379,7 +382,8 @@ const ExportTab = React.memo(function ExportTab({
   // MAIN RENDER
   // ═══════════════════════════════════════════════════
   return (
-    <motion.div {...stagger} className="space-y-5 mt-4 sm:mt-6 pb-24 md:pb-8">
+    <TabsContent value="export" className="mt-4 sm:mt-6 pb-24 md:pb-8">
+    <motion.div {...stagger} className="space-y-5">
 
       {/* ═══════════════════════════════════════════════
           FILTERS SECTION
@@ -1053,6 +1057,7 @@ const ExportTab = React.memo(function ExportTab({
       </AnimatePresence>
 
     </motion.div>
+    </TabsContent>
   )
 })
 

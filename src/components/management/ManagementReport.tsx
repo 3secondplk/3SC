@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,8 +13,12 @@ import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   DollarSign, Hash, ShoppingCart, TrendingUp, Search, Download, X,
-  ChevronLeft, ChevronRight, CalendarDays, FileSpreadsheet, Users, Filter,
+  ChevronLeft, ChevronRight, ChevronDown, CalendarDays, FileSpreadsheet, Users, Filter,
+  Layers, Database, Loader2, Eye, AlertTriangle, RefreshCw,
 } from 'lucide-react'
 import { fmtRp, fmtNum, fadeIn, stagger, safeFetch, getWIBToday, getWeekRange, getMonthRange, getPageNumbers } from '@/lib/cms-utils'
 import type { Crew, Group } from '@/lib/cms-types'
@@ -22,7 +27,14 @@ import type { Crew, Group } from '@/lib/cms-types'
 interface ManagementReportProps {
   crews: Crew[]
   groups: Group[]
-  isAdmin: boolean
+  /** Gate admin lama (default true). Halaman publik tidak butuh login. */
+  isAdmin?: boolean
+  /** Base URL API report — default '/api/management/report' (admin).
+   *  Halaman Laporan publik memakai '/api/public/report'. */
+  apiBase?: string
+  /** Base URL API export CSV — default '/api/export' (admin).
+   *  Halaman Laporan publik memakai '/api/public/report/export'. */
+  exportBase?: string
 }
 
 interface ReportSale {
@@ -51,6 +63,27 @@ interface ReportCrewInfo {
   groupName: string
 }
 
+interface BreakdownCrewRow {
+  crewId: string
+  crewName: string
+  groupId: string
+  groupName: string
+  totalQty: number
+  totalSettle: number
+  totalStruk: number
+  pctSettle: number
+}
+
+interface BreakdownGroupRow {
+  groupId: string
+  groupName: string
+  crewCount: number
+  totalQty: number
+  totalSettle: number
+  totalStruk: number
+  pctSettle: number
+}
+
 interface ReportData {
   sales: ReportSale[]
   total: number
@@ -58,7 +91,21 @@ interface ReportData {
   page: number
   summary: ReportSummary
   crewInfo: ReportCrewInfo | null
+  breakdown?: {
+    byGroup: BreakdownGroupRow[]
+    byCrew: BreakdownCrewRow[]
+  }
 }
+
+// ─── Filter state (draft → applied via tombol Tampilkan) ──
+interface Filters {
+  groupId: string
+  crewId: string
+  dateFrom: string
+  dateTo: string
+}
+
+const emptyFilters: Filters = { groupId: '', crewId: '', dateFrom: '', dateTo: '' }
 
 // ─── Quick filter chips ─────────────────────────────────
 type QuickFilter = 'today' | 'week' | 'month' | 'all'
@@ -74,13 +121,13 @@ const quickFilters: { key: QuickFilter; label: string }[] = [
 const ManagementReport = React.memo(function ManagementReport({
   crews,
   groups,
-  isAdmin,
+  isAdmin = true,
+  apiBase = '/api/management/report',
+  exportBase = '/api/export',
 }: ManagementReportProps) {
-  // Filter state
-  const [selectedCrewId, setSelectedCrewId] = useState<string>('')
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('')
-  const [dateFrom, setDateFrom] = useState<string>('')
-  const [dateTo, setDateTo] = useState<string>('')
+  // Filter state — draft diedit user, applied dipakai query
+  const [draft, setDraft] = useState<Filters>(emptyFilters)
+  const [applied, setApplied] = useState<Filters>(emptyFilters)
   const [searchInput, setSearchInput] = useState<string>('')
   const [debouncedSearch, setDebouncedSearch] = useState<string>('')
   const [page, setPage] = useState(1)
@@ -89,10 +136,14 @@ const ManagementReport = React.memo(function ManagementReport({
   const [reportData, setReportData] = useState<ReportData | null>(null)
   const [initialLoading, setInitialLoading] = useState(true)
   const [subsequentLoading, setSubsequentLoading] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState<'' | 'zoning' | 'crew' | 'all'>('')
 
   // Refs
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstLoadRef = useRef(true)
+
+  const crewsById = useMemo(() => new Map(crews.map((c) => [c.id, c])), [crews])
 
   // ─── Debounced search (500ms using useRef + setTimeout) ───
   useEffect(() => {
@@ -109,32 +160,68 @@ const ManagementReport = React.memo(function ManagementReport({
     }
   }, [searchInput])
 
-  // ─── Reset page when filters change ───
+  // ─── Reset page when applied filters change ───
   useEffect(() => {
     setPage(1)
-  }, [selectedCrewId, selectedGroupId, dateFrom, dateTo, debouncedSearch])
+  }, [applied, debouncedSearch])
 
-  // ─── Determine effective crewId (selected crew filtered by group) ───
-  const effectiveCrewId = useMemo(() => {
-    if (selectedGroupId) {
-      // When a group is selected, override crewId to empty (show all in group)
-      return ''
-    }
-    return selectedCrewId
-  }, [selectedCrewId, selectedGroupId])
+  // ─── Filter draft helpers ───
+  const setDraftField = useCallback((field: keyof Filters, value: string) => {
+    setDraft((d) => ({ ...d, [field]: value }))
+  }, [])
+
+  // Zoning diganti → crew yang bukan anggota zoning baru di-reset
+  const handleDraftGroupChange = useCallback(
+    (val: string) => {
+      const groupId = val === '__all__' ? '' : val
+      setDraft((d) => {
+        if (!groupId) return { ...d, groupId: '' }
+        const crewStillValid = !d.crewId || crewsById.get(d.crewId)?.groupId === groupId
+        return crewStillValid ? { ...d, groupId } : { ...d, groupId, crewId: '' }
+      })
+    },
+    [crewsById],
+  )
+
+  // Crew dipilih → zoning-nya ikut terpilih (identitas selalu jelas)
+  const handleDraftCrewChange = useCallback(
+    (val: string) => {
+      const crewId = val === '__all__' ? '' : val
+      setDraft((d) => {
+        if (!crewId) return { ...d, crewId: '' }
+        const crew = crewsById.get(crewId)
+        return { ...d, crewId, groupId: crew?.groupId || d.groupId }
+      })
+    },
+    [crewsById],
+  )
+
+  // ─── Tampilkan — commit draft → applied ───
+  const handleApply = useCallback(() => {
+    setApplied((prev) => ({ ...prev, ...draft }))
+  }, [draft])
+
+  const isDirty = useMemo(
+    () =>
+      draft.groupId !== applied.groupId ||
+      draft.crewId !== applied.crewId ||
+      draft.dateFrom !== applied.dateFrom ||
+      draft.dateTo !== applied.dateTo,
+    [draft, applied],
+  )
 
   // ─── Build query params ───
   const queryParams = useMemo(() => {
     const params = new URLSearchParams()
-    if (effectiveCrewId) params.set('crewId', effectiveCrewId)
-    if (selectedGroupId) params.set('groupId', selectedGroupId)
-    if (dateFrom) params.set('dateFrom', dateFrom)
-    if (dateTo) params.set('dateTo', dateTo)
+    if (applied.crewId) params.set('crewId', applied.crewId)
+    if (applied.groupId) params.set('groupId', applied.groupId)
+    if (applied.dateFrom) params.set('dateFrom', applied.dateFrom)
+    if (applied.dateTo) params.set('dateTo', applied.dateTo)
     if (debouncedSearch) params.set('search', debouncedSearch)
     params.set('page', String(page))
     params.set('limit', '50')
     return params.toString()
-  }, [effectiveCrewId, selectedGroupId, dateFrom, dateTo, debouncedSearch, page])
+  }, [applied, debouncedSearch, page])
 
   // ─── Fetch report data ───
   const fetchReport = useCallback(async () => {
@@ -145,70 +232,128 @@ const ManagementReport = React.memo(function ManagementReport({
     } else {
       setSubsequentLoading(true)
     }
+    setFetchError(null)
 
     try {
-      const res = await safeFetch(`/api/management/report?${queryParams}`)
+      const res = await safeFetch(`${apiBase}?${queryParams}`)
       if (res.ok) {
         const data = await res.json()
         setReportData(data)
+      } else {
+        let msg = 'Gagal memuat laporan'
+        try {
+          const d = await res.json()
+          if (d?.error) msg = d.error
+        } catch { /* ignore parse error */ }
+        setFetchError(msg)
       }
     } catch (err) {
       console.error('Failed to fetch report:', err)
+      setFetchError('Tidak dapat terhubung ke server. Periksa koneksi lalu coba lagi.')
     } finally {
       setInitialLoading(false)
       setSubsequentLoading(false)
       isFirstLoadRef.current = false
     }
-  }, [isAdmin, queryParams])
+  }, [isAdmin, apiBase, queryParams])
 
   useEffect(() => {
     fetchReport()
   }, [fetchReport])
 
-  // ─── Quick filter handler ───
+  // ─── Quick filter handler (langsung commit ke draft & applied) ───
   const handleQuickFilter = useCallback((filter: QuickFilter) => {
     const today = getWIBToday()
+    let from = ''
+    let to = ''
     switch (filter) {
       case 'today':
-        setDateFrom(today)
-        setDateTo(today)
+        from = today
+        to = today
         break
       case 'week': {
         const wr = getWeekRange()
-        setDateFrom(wr.from)
-        setDateTo(wr.to)
+        from = wr.from
+        to = wr.to
         break
       }
       case 'month': {
         const mr = getMonthRange()
-        setDateFrom(mr.from)
-        setDateTo(mr.to)
+        from = mr.from
+        to = mr.to
         break
       }
       case 'all':
-        setDateFrom('')
-        setDateTo('')
+        from = ''
+        to = ''
         break
     }
+    setDraft((d) => ({ ...d, dateFrom: from, dateTo: to }))
+    setApplied((a) => ({ ...a, dateFrom: from, dateTo: to }))
   }, [])
 
-  // ─── Export CSV ───
-  const handleExport = useCallback(() => {
-    const params = new URLSearchParams()
-    if (effectiveCrewId) params.set('crewId', effectiveCrewId)
-    if (dateFrom) params.set('dateFrom', dateFrom)
-    if (dateTo) params.set('dateTo', dateTo)
-    const qs = params.toString()
-    window.open(`/api/export?${qs}`, '_blank')
-  }, [effectiveCrewId, dateFrom, dateTo])
+  // ─── Export CSV — dropdown scope, streaming server-side ───
+  const handleExport = useCallback(
+    async (scope: 'zoning' | 'crew' | 'all') => {
+      setExporting(scope)
+      try {
+        const params = new URLSearchParams()
+        params.set('scope', scope)
+        params.set('claimedOnly', '1') // semantik Report: hanya penjualan ber-claim
+        if (applied.groupId) params.set('groupId', applied.groupId)
+        if (applied.crewId) params.set('crewId', applied.crewId)
+        if (applied.dateFrom) params.set('dateFrom', applied.dateFrom)
+        if (applied.dateTo) params.set('dateTo', applied.dateTo)
+        const res = await safeFetch(`${exportBase}?${params.toString()}`, {}, 120_000)
+        if (!res.ok) {
+          let msg = 'Gagal mengekspor data'
+          try {
+            const d = await res.json()
+            if (d?.error) msg = d.error
+          } catch { /* ignore */ }
+          toast.error(msg)
+          return
+        }
+        const blob = await res.blob()
+        const totalRows = res.headers.get('X-Total-Rows')
+        const cd = res.headers.get('Content-Disposition') || ''
+        const filename = cd.match(/filename="?([^"]+)"?/)?.[1] || 'laporan-export.csv'
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+        toast.success(
+          totalRows
+            ? `Export berhasil — ${fmtNum(parseInt(totalRows, 10))} baris`
+            : 'Export berhasil',
+        )
+      } catch {
+        toast.error('Gagal mengekspor data')
+      } finally {
+        setExporting('')
+      }
+    },
+    [applied, exportBase],
+  )
 
-  // ─── Filtered crews for crew dropdown (based on selected group) ───
+  // ─── Reset semua filter ───
+  const handleResetAll = useCallback(() => {
+    setDraft(emptyFilters)
+    setApplied(emptyFilters)
+    setSearchInput('')
+  }, [])
+
+  // ─── Filtered crews for crew dropdown (mengikuti zoning terpilih) ───
   const filteredCrews = useMemo(() => {
-    if (selectedGroupId) {
-      return crews.filter(c => c.groupId === selectedGroupId)
+    if (draft.groupId) {
+      return crews.filter((c) => c.groupId === draft.groupId)
     }
     return crews
-  }, [crews, selectedGroupId])
+  }, [crews, draft.groupId])
 
   // ─── Page numbers for pagination ───
   const pageNumbers = useMemo(() => {
@@ -254,6 +399,8 @@ const ManagementReport = React.memo(function ManagementReport({
 
   // ─── Price point card (special layout) ───
   const pricePoint = reportData?.summary.pricePoint ?? 0
+  const byGroup = reportData?.breakdown?.byGroup ?? []
+  const byCrew = reportData?.breakdown?.byCrew ?? []
 
   // ═══════════════════════════════════════════════════
   // INITIAL LOADING SKELETON
@@ -334,21 +481,20 @@ const ManagementReport = React.memo(function ManagementReport({
         <CardContent className="p-4 space-y-4">
           {/* Top row: Selectors */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Group Selector */}
+            {/* Zoning/Group Selector */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Group</label>
-              <Select value={selectedGroupId} onValueChange={(val) => {
-                setSelectedGroupId(val === '__all__' ? '' : val)
-                setSelectedCrewId('')
-              }}>
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Layers className="w-3 h-3" />Zoning / Group
+              </label>
+              <Select value={draft.groupId || '__all__'} onValueChange={handleDraftGroupChange}>
                 <SelectTrigger className="w-full h-10 glass-stat">
-                  <SelectValue placeholder="Semua Group" />
+                  <SelectValue placeholder="Semua Zoning" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">Semua Group</SelectItem>
+                  <SelectItem value="__all__">Semua Zoning</SelectItem>
                   <SelectSeparator />
                   <SelectGroup>
-                    <SelectLabel>Group</SelectLabel>
+                    <SelectLabel>Zoning</SelectLabel>
                     {groups.map(g => (
                       <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
                     ))}
@@ -357,13 +503,12 @@ const ManagementReport = React.memo(function ManagementReport({
               </Select>
             </div>
 
-            {/* Crew Selector */}
+            {/* Crew Selector — cascade dari zoning terpilih */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Crew</label>
-              <Select value={selectedCrewId} onValueChange={(val) => {
-                setSelectedCrewId(val === '__all__' ? '' : val)
-                if (val !== '__all__') setSelectedGroupId('')
-              }}>
+              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Users className="w-3 h-3" />Crew
+              </label>
+              <Select value={draft.crewId || '__all__'} onValueChange={handleDraftCrewChange}>
                 <SelectTrigger className="w-full h-10 glass-stat">
                   <SelectValue placeholder="Semua Crew" />
                 </SelectTrigger>
@@ -378,6 +523,11 @@ const ManagementReport = React.memo(function ManagementReport({
                   </SelectGroup>
                 </SelectContent>
               </Select>
+              {draft.groupId && (
+                <p className="text-[10px] text-muted-foreground">
+                  Menampilkan crew di {groups.find(g => g.id === draft.groupId)?.name || 'zoning ini'} saja
+                </p>
+              )}
             </div>
 
             {/* Date From */}
@@ -387,8 +537,8 @@ const ManagementReport = React.memo(function ManagementReport({
               </label>
               <Input
                 type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
+                value={draft.dateFrom}
+                onChange={(e) => setDraftField('dateFrom', e.target.value)}
                 className="h-10 glass-stat"
               />
             </div>
@@ -400,22 +550,22 @@ const ManagementReport = React.memo(function ManagementReport({
               </label>
               <Input
                 type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
+                value={draft.dateTo}
+                onChange={(e) => setDraftField('dateTo', e.target.value)}
                 className="h-10 glass-stat"
               />
             </div>
           </div>
 
-          {/* Quick filter chips + Search + Export */}
+          {/* Quick filter chips + Search + Tampilkan + Export */}
           <div className="flex flex-wrap items-center gap-2">
             {/* Quick filters */}
             {quickFilters.map(qf => {
               const isActive = (
-                (qf.key === 'today' && dateFrom === getWIBToday() && dateTo === getWIBToday()) ||
-                (qf.key === 'week' && (() => { const wr = getWeekRange(); return dateFrom === wr.from && dateTo === wr.to })()) ||
-                (qf.key === 'month' && (() => { const mr = getMonthRange(); return dateFrom === mr.from && dateTo === mr.to })()) ||
-                (qf.key === 'all' && !dateFrom && !dateTo)
+                (qf.key === 'today' && draft.dateFrom === getWIBToday() && draft.dateTo === getWIBToday()) ||
+                (qf.key === 'week' && (() => { const wr = getWeekRange(); return draft.dateFrom === wr.from && draft.dateTo === wr.to })()) ||
+                (qf.key === 'month' && (() => { const mr = getMonthRange(); return draft.dateFrom === mr.from && draft.dateTo === mr.to })()) ||
+                (qf.key === 'all' && !draft.dateFrom && !draft.dateTo)
               )
               return (
                 <button
@@ -457,20 +607,97 @@ const ManagementReport = React.memo(function ManagementReport({
             {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Export button */}
+            {/* Tampilkan button */}
             <Button
               size="sm"
-              onClick={handleExport}
-              className="bg-gradient-to-r from-[#D4956B] to-[#B8321E] hover:from-[#B8321E] hover:to-[#8F8B6E] text-white shadow-md shadow-[#D4956B]/20 text-xs font-semibold transition-all"
+              onClick={handleApply}
+              disabled={subsequentLoading}
+              className={`relative text-xs font-semibold transition-all shadow-md text-white ${
+                isDirty
+                  ? 'bg-gradient-to-r from-[#E14227] to-[#B8321E] hover:from-[#B8321E] hover:to-[#8F1E10] shadow-[#E14227]/25'
+                  : 'bg-muted-foreground/70 hover:bg-muted-foreground/80 shadow-none'
+              }`}
             >
-              <Download className="w-3.5 h-3.5 mr-1.5" />
-              Export CSV
+              {subsequentLoading ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Eye className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              Tampilkan
+              {isDirty && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white dark:border-gray-900" />
+              )}
             </Button>
+
+            {/* Export dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  disabled={exporting !== ''}
+                  className="bg-gradient-to-r from-[#D4956B] to-[#B8321E] hover:from-[#B8321E] hover:to-[#8F8B6E] text-white shadow-md shadow-[#D4956B]/20 text-xs font-semibold transition-all"
+                >
+                  {exporting !== '' ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  Export Data
+                  <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem
+                  onClick={() => handleExport('zoning')}
+                  disabled={!applied.groupId || exporting !== ''}
+                  className="text-xs cursor-pointer"
+                >
+                  <Layers className="w-3.5 h-3.5 mr-2 text-[#E14227]" />
+                  <div className="flex flex-col">
+                    <span>Export Zoning/Group Ini</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {applied.groupId
+                        ? groups.find(g => g.id === applied.groupId)?.name || 'Zoning terpilih'
+                        : 'Pilih zoning terlebih dahulu'}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleExport('crew')}
+                  disabled={!applied.crewId || exporting !== ''}
+                  className="text-xs cursor-pointer"
+                >
+                  <Users className="w-3.5 h-3.5 mr-2 text-[#D4956B]" />
+                  <div className="flex flex-col">
+                    <span>Export Crew Ini</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {applied.crewId
+                        ? crewsById.get(applied.crewId)?.name || 'Crew terpilih'
+                        : 'Pilih crew terlebih dahulu'}
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => handleExport('all')}
+                  disabled={exporting !== ''}
+                  className="text-xs cursor-pointer"
+                >
+                  <Database className="w-3.5 h-3.5 mr-2 text-[#9DB1CC]" />
+                  <div className="flex flex-col">
+                    <span>Export Semua Data</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      Semua zoning &amp; crew dalam rentang tanggal
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Active filter badges */}
           <AnimatePresence>
-            {(selectedCrewId || selectedGroupId || dateFrom || dateTo || debouncedSearch) && (
+            {(applied.crewId || applied.groupId || applied.dateFrom || applied.dateTo || debouncedSearch) && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -478,28 +705,28 @@ const ManagementReport = React.memo(function ManagementReport({
                 className="flex flex-wrap items-center gap-1.5"
               >
                 <Filter className="w-3 h-3 text-muted-foreground mr-1" />
-                {selectedGroupId && (
+                {applied.groupId && (
                   <Badge variant="secondary" className="text-[10px] px-2 py-0.5">
-                    Group: {groups.find(g => g.id === selectedGroupId)?.name || 'Unknown'}
-                    <button onClick={() => { setSelectedGroupId(''); setSelectedCrewId('') }} className="ml-1 hover:text-destructive"><X className="w-2.5 h-2.5 inline" /></button>
+                    Zoning: {groups.find(g => g.id === applied.groupId)?.name || 'Unknown'}
+                    <button onClick={() => { setDraft(d => ({ ...d, groupId: '', crewId: '' })); setApplied(a => ({ ...a, groupId: '', crewId: '' })) }} className="ml-1 hover:text-destructive"><X className="w-2.5 h-2.5 inline" /></button>
                   </Badge>
                 )}
-                {selectedCrewId && (
+                {applied.crewId && (
                   <Badge variant="secondary" className="text-[10px] px-2 py-0.5">
-                    Crew: {crews.find(c => c.id === selectedCrewId)?.name || 'Unknown'}
-                    <button onClick={() => setSelectedCrewId('')} className="ml-1 hover:text-destructive"><X className="w-2.5 h-2.5 inline" /></button>
+                    Crew: {crews.find(c => c.id === applied.crewId)?.name || 'Unknown'}
+                    <button onClick={() => { setDraft(d => ({ ...d, crewId: '' })); setApplied(a => ({ ...a, crewId: '' })) }} className="ml-1 hover:text-destructive"><X className="w-2.5 h-2.5 inline" /></button>
                   </Badge>
                 )}
-                {dateFrom && (
+                {applied.dateFrom && (
                   <Badge variant="secondary" className="text-[10px] px-2 py-0.5">
-                    Dari: {dateFrom}
-                    <button onClick={() => setDateFrom('')} className="ml-1 hover:text-destructive"><X className="w-2.5 h-2.5 inline" /></button>
+                    Dari: {applied.dateFrom}
+                    <button onClick={() => { setDraft(d => ({ ...d, dateFrom: '' })); setApplied(a => ({ ...a, dateFrom: '' })) }} className="ml-1 hover:text-destructive"><X className="w-2.5 h-2.5 inline" /></button>
                   </Badge>
                 )}
-                {dateTo && (
+                {applied.dateTo && (
                   <Badge variant="secondary" className="text-[10px] px-2 py-0.5">
-                    Sampai: {dateTo}
-                    <button onClick={() => setDateTo('')} className="ml-1 hover:text-destructive"><X className="w-2.5 h-2.5 inline" /></button>
+                    Sampai: {applied.dateTo}
+                    <button onClick={() => { setDraft(d => ({ ...d, dateTo: '' })); setApplied(a => ({ ...a, dateTo: '' })) }} className="ml-1 hover:text-destructive"><X className="w-2.5 h-2.5 inline" /></button>
                   </Badge>
                 )}
                 {debouncedSearch && (
@@ -509,13 +736,7 @@ const ManagementReport = React.memo(function ManagementReport({
                   </Badge>
                 )}
                 <button
-                  onClick={() => {
-                    setSelectedCrewId('')
-                    setSelectedGroupId('')
-                    setDateFrom('')
-                    setDateTo('')
-                    setSearchInput('')
-                  }}
+                  onClick={handleResetAll}
                   className="text-[10px] text-muted-foreground hover:text-[#E14227] transition-colors ml-1"
                 >
                   Reset semua
@@ -525,6 +746,38 @@ const ManagementReport = React.memo(function ManagementReport({
           </AnimatePresence>
         </CardContent>
       </Card>
+
+      {/* ═══════════════════════════════════════════════
+          ERROR STATE
+          ═══════════════════════════════════════════════ */}
+      {fetchError && (
+        <motion.div {...fadeIn}>
+          <Card className="border-0 shadow-lg bg-destructive/5 dark:bg-destructive/10">
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                  <div className="w-8 h-8 shrink-0 rounded-lg bg-destructive/15 flex items-center justify-center">
+                    <AlertTriangle className="w-4 h-4 text-destructive" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-destructive">Gagal memuat laporan</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{fetchError}</p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={fetchReport}
+                  className="text-xs shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                  Coba Lagi
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* ═══════════════════════════════════════════════
           SUMMARY STAT CARDS
@@ -573,6 +826,128 @@ const ManagementReport = React.memo(function ManagementReport({
           </Card>
         </motion.div>
       </div>
+
+      {/* ═══════════════════════════════════════════════
+          BREAKDOWN — DATA PER ZONING/GROUP & PER CREW
+          (dibaca dari relasi Management Crew.groupId)
+          ═══════════════════════════════════════════════ */}
+      {(byGroup.length > 0 || byCrew.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* Per Zoning/Group */}
+          {byGroup.length > 0 && (
+            <motion.div {...fadeIn} transition={{ delay: 0.1 }}>
+              <Card className="border-0 shadow-lg glass-card overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#E14227] to-[#B8321E] flex items-center justify-center shadow-md shadow-[#E14227]/20">
+                      <Layers className="w-3.5 h-3.5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold text-foreground">Data per Zoning/Group</h3>
+                      <p className="text-[10px] text-muted-foreground">Kontribusi settle per zoning dalam filter aktif</p>
+                    </div>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto rounded-lg border border-border/30">
+                    <Table className="table-stripe table-sticky-head">
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="text-xs">Zoning</TableHead>
+                          <TableHead className="text-xs text-center">Crew</TableHead>
+                          <TableHead className="text-xs text-right">Qty</TableHead>
+                          <TableHead className="text-xs text-right">Struk</TableHead>
+                          <TableHead className="text-xs text-right">Settle</TableHead>
+                          <TableHead className="text-xs text-right w-24">Kontribusi</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {byGroup.map((g) => (
+                          <TableRow key={g.groupId} className="hover:bg-muted/30">
+                            <TableCell className="text-xs font-semibold">{g.groupName}</TableCell>
+                            <TableCell className="text-xs text-center tabular-nums">{fmtNum(g.crewCount)}</TableCell>
+                            <TableCell className="text-xs text-right tabular-nums">{fmtNum(g.totalQty)}</TableCell>
+                            <TableCell className="text-xs text-right tabular-nums">{fmtNum(g.totalStruk)}</TableCell>
+                            <TableCell className="text-xs text-right font-bold tabular-nums">{fmtRp(g.totalSettle)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1.5 justify-end">
+                                <div className="h-1.5 flex-1 min-w-8 bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-gradient-to-r from-[#E14227] to-[#D4956B] rounded-full"
+                                    style={{ width: `${Math.min(100, Math.max(2, g.pctSettle))}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] tabular-nums text-muted-foreground w-9 text-right">
+                                  {g.pctSettle.toFixed(1)}%
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* Per Crew */}
+          {byCrew.length > 0 && (
+            <motion.div {...fadeIn} transition={{ delay: 0.15 }}>
+              <Card className="border-0 shadow-lg glass-card overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#9DB1CC] to-[#7E95B3] flex items-center justify-center shadow-md shadow-[#9DB1CC]/20">
+                      <Users className="w-3.5 h-3.5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold text-foreground">Data per Crew</h3>
+                      <p className="text-[10px] text-muted-foreground">Kontribusi settle per crew dalam filter aktif</p>
+                    </div>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto rounded-lg border border-border/30">
+                    <Table className="table-stripe table-sticky-head">
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="text-xs">Crew</TableHead>
+                          <TableHead className="text-xs">Zoning</TableHead>
+                          <TableHead className="text-xs text-right">Qty</TableHead>
+                          <TableHead className="text-xs text-right">Struk</TableHead>
+                          <TableHead className="text-xs text-right">Settle</TableHead>
+                          <TableHead className="text-xs text-right w-24">Kontribusi</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {byCrew.map((c) => (
+                          <TableRow key={c.crewId} className="hover:bg-muted/30">
+                            <TableCell className="text-xs font-semibold">{c.crewName}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{c.groupName}</TableCell>
+                            <TableCell className="text-xs text-right tabular-nums">{fmtNum(c.totalQty)}</TableCell>
+                            <TableCell className="text-xs text-right tabular-nums">{fmtNum(c.totalStruk)}</TableCell>
+                            <TableCell className="text-xs text-right font-bold tabular-nums">{fmtRp(c.totalSettle)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1.5 justify-end">
+                                <div className="h-1.5 flex-1 min-w-8 bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-gradient-to-r from-[#9DB1CC] to-[#E14227] rounded-full"
+                                    style={{ width: `${Math.min(100, Math.max(2, c.pctSettle))}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] tabular-nums text-muted-foreground w-9 text-right">
+                                  {c.pctSettle.toFixed(1)}%
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════
           SALES TABLE
@@ -652,6 +1027,9 @@ const ManagementReport = React.memo(function ManagementReport({
                         <div className="flex items-center gap-1.5">
                           <Users className="w-3 h-3 text-[#9DB1CC]" />
                           <span className="text-[11px] font-medium">{sale.crew.name}</span>
+                          {sale.crew.group && (
+                            <Badge variant="secondary" className="text-[9px] px-1.5 py-0">{sale.crew.group.name}</Badge>
+                          )}
                           {sale.program && (
                             <Badge variant="secondary" className="text-[9px] px-1.5 py-0 ml-auto">{sale.program}</Badge>
                           )}

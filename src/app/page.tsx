@@ -14,7 +14,7 @@ import {
   LayoutDashboard, Upload, Settings, Layers, Sun, Moon, Shield, LogOut,
   ChevronUp, Users, Crown, Target, Calendar, CalendarDays, UserCheck, CheckCircle2,
   DollarSign, ShoppingCart, Search, X, Sparkles, Heart,
-  Monitor, Briefcase, Beaker, Code2, Smartphone, Clock, Sunset, FileUp, UserPlus, Keyboard, Download, ShoppingBag,
+  Monitor, Briefcase, Beaker, Code2, Smartphone, Clock, Sunset, FileUp, UserPlus, Keyboard, Download, ShoppingBag, FileBarChart,
 } from 'lucide-react'
 import { fmtRp, fmtNum, getWIBDate, getWIBToday, monthNames, dayNames, currentYear, getWeekRange, getMonthRange, safeFetch, setStoredToken, clearStoredToken } from '@/lib/cms-utils'
 import type { CrewStat, GroupAchievement, DashboardData, Crew, Group, ClaimSale, GroupDetailData, DeleteConfirmState } from '@/lib/cms-types'
@@ -25,6 +25,7 @@ import ClaimsTab from '@/components/claims/ClaimsTab'
 import TikTokSalesTab from '@/components/tiktok/TikTokSalesTab'
 import ManagementTab from '@/components/management/ManagementTab'
 import ExportTab from '@/components/export/ExportTab'
+import LaporanPage from '@/components/report/LaporanPage'
 import DeleteConfirmDialog from '@/components/modals/DeleteConfirmDialog'
 import EditSaleDialog from '@/components/modals/EditSaleDialog'
 import CrewDetailPanel from '@/components/modals/CrewDetailPanel'
@@ -464,12 +465,13 @@ export default function Home() {
       // ── Navigation and theme shortcuts: only when no input/dialog focused ──
       if (inputFocused || dialogOpen) return
 
-      // ── 1, 2, 3, 4, 5 : Switch tabs ──
+      // ── 1, 2, 3, 4, 5, 6 : Switch tabs ──
       if (e.key === '1') { setActiveTab('dashboard'); return }
       if (e.key === '2') { setActiveTab('target'); return }
       if (e.key === '3') { setActiveTab('claims'); return }
       if (e.key === '4') { setActiveTab('export'); return }
-      if (e.key === '5') { setActiveTab('management'); return }
+      if (e.key === '5') { setActiveTab('laporan'); return }
+      if (e.key === '6') { setActiveTab('management'); return }
 
       // ── T : Toggle theme ──
       if (e.key === 't' || e.key === 'T') {
@@ -943,12 +945,17 @@ export default function Home() {
 
 
   // ─── RENDER ────────────────────────────────────────────
+  // ─── Nav helpers — "Laporan" kini halaman sendiri (tab top-level, publik) ───
+  const navActive = (val: string) => activeTab === val
+  const goToNav = (val: string) => setActiveTab(val)
+
   const navItems = [
     { val: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', desc: 'Ringkasan & statistik' },
     { val: 'target', icon: CalendarDays, label: 'Target', desc: 'Target & jadwal crew (publik)' },
     { val: 'claims', icon: Upload, label: 'Claim Penjualan', desc: 'Upload & klaim data' },
     { val: 'tiktok', icon: ShoppingBag, label: 'TikTok', desc: 'Penjualan TikTok' },
     { val: 'export', icon: Download, label: 'Export Data', desc: 'Preview & ekspor penjualan' },
+    { val: 'laporan', icon: FileBarChart, label: 'Laporan', desc: 'Laporan penjualan (halaman publik)' },
     { val: 'management', icon: Settings, label: 'Management', desc: 'Kelola crew & grup' },
   ]
 
@@ -1003,16 +1010,16 @@ export default function Home() {
                   {navItems.map(t => (
                     <button
                       key={t.val}
-                      onClick={() => setActiveTab(t.val)}
+                      onClick={() => goToNav(t.val)}
                       className={`relative flex items-center gap-2 px-2.5 py-2 xl:px-4 rounded-xl text-sm font-medium transition-all duration-200 ${
-                        activeTab === t.val
+                        navActive(t.val)
                           ? 'bg-[#E14227]/10 dark:bg-[#E14227]/20 text-[#E14227] dark:text-[#E14227] shadow-sm'
                           : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                       }`}
                     >
                       <t.icon className="w-4 h-4 shrink-0" />
                       <span className="hidden xl:inline">{t.label}</span>
-                      {activeTab === t.val && (
+                      {navActive(t.val) && (
                         <motion.div layoutId="nav-active" className="absolute inset-0 rounded-xl bg-[#E14227]/10 dark:bg-[#E14227]/20 -z-10" transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }} />
                       )}
                     </button>
@@ -1121,7 +1128,7 @@ export default function Home() {
                   size="sm"
                   variant="outline"
                   className="shrink-0 text-xs h-8 bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm border-border/60 hover:bg-white dark:hover:bg-gray-900"
-                  onClick={() => setActiveTab('management')}
+                  onClick={() => goToNav('management')}
                 >
                   <Shield className="w-3.5 h-3.5 mr-1.5" />
                   Login
@@ -1252,6 +1259,9 @@ export default function Home() {
               isAdmin={isAdmin}
             />
 
+            {/* ─── Laporan Page (HALAMAN SENDIRI — AKSES PUBLIK) ── */}
+            <LaporanPage />
+
             {/* ─── Management Tab ───────────────────────── */}
             <ManagementTab
               isAdmin={isAdmin}
@@ -1366,7 +1376,7 @@ export default function Home() {
                 <p className="text-[10px] font-bold text-white uppercase tracking-widest">Menu</p>
                 <div className="space-y-1.5">
                   {navItems.map(t => (
-                    <button key={t.val} onClick={() => { setActiveTab(t.val); window.scrollTo({ top: 0, behavior: 'smooth' }) }} className="flex items-center gap-2 text-xs text-white/60 hover:text-white transition-colors py-0.5">
+                    <button key={t.val} onClick={() => { goToNav(t.val); window.scrollTo({ top: 0, behavior: 'smooth' }) }} className="flex items-center gap-2 text-xs text-white/60 hover:text-white transition-colors py-0.5">
                       <t.icon className="w-3 h-3 text-white/40" />{t.label}
                     </button>
                   ))}
@@ -1580,12 +1590,12 @@ export default function Home() {
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-[#1A1A1B]/90 backdrop-blur-2xl border-t border-border/50 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.3)]">
         <div className="flex items-center justify-around px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
           {navItems.map(t => {
-            const isActive = activeTab === t.val
+            const isActive = navActive(t.val)
             const hasUnclaimed = t.val === 'claims' && notificationCount > 0
             return (
               <motion.button
                 key={t.val}
-                onClick={() => { setActiveTab(t.val); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                onClick={() => { goToNav(t.val); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
                 whileTap={{ scale: 0.88 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 17 }}
                 className={`relative flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 rounded-2xl min-w-[48px] transition-colors duration-200 ${

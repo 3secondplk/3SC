@@ -101,7 +101,8 @@ export default function KeyboardShortcutsHelp({ open, onOpenChange }: KeyboardSh
             <ShortcutRow keys={[<Kbd key="2">2</Kbd>]} description="Switch to Target & Jadwal" />
             <ShortcutRow keys={[<Kbd key="3">3</Kbd>]} description="Switch to Claims" />
             <ShortcutRow keys={[<Kbd key="4">4</Kbd>]} description="Switch to Export" />
-            <ShortcutRow keys={[<Kbd key="5">5</Kbd>]} description="Switch to Management" />
+            <ShortcutRow keys={[<Kbd key="5">5</Kbd>]} description="Switch to Laporan (Report)" />
+            <ShortcutRow keys={[<Kbd key="6">6</Kbd>]} description="Switch to Management" />
             <ShortcutRow keys={[<Kbd key={modKey('K')}>{modKey('K')}</Kbd>]} description="Focus search input" />
           </ShortcutGroup>
 

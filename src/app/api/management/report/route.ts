@@ -1,132 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { requireAuth, unauthorized } from '@/lib/auth'
+import { reportQuerySchema, firstZodMessage } from '@/lib/report-schemas'
+import { rateLimit, rateLimitKey } from '@/lib/rate-limit'
+import { getReportData } from '@/lib/report-service'
 
 // ─────────────────────────────────────────────
 // GET /api/management/report — Management report with filtering, pagination & summary
+// (ADMIN — dilindungi auth; logika inti ada di src/lib/report-service.ts
+//  agar identik dengan endpoint publik /api/public/report)
 // ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth()
     if (!auth) return unauthorized()
+
+    // Rate limit — 60 req/menit per admin
+    const ip = request.headers.get('x-forwarded-for')
+    const rl = rateLimit(rateLimitKey('report', auth.adminId, ip), 60, 60_000)
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: `Terlalu banyak permintaan. Coba lagi dalam ${rl.retryAfterSec} detik.` },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } },
+      )
+    }
+
     const { searchParams } = new URL(request.url)
-
-    const crewId = searchParams.get('crewId') || ''
-    const dateFrom = searchParams.get('dateFrom') || ''
-    const dateTo = searchParams.get('dateTo') || ''
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50')))
-    const search = searchParams.get('search') || ''
-
-    // Build Prisma where clause
-    const where: Record<string, unknown> = {}
-
-    // Only include claimed sales in management report
-    where.crewId = crewId ? crewId : { not: null }
-
-    // Search across kodeExtend, brand, dept (case-insensitive)
-    if (search) {
-      const searchConditions: Record<string, unknown>[] = [
-        { kodeExtend: { contains: search } },
-        { brand: { contains: search } },
-        { dept: { contains: search } },
-      ]
-      // If searching within a specific crew, also search crew name
-      if (crewId) {
-        searchConditions.push({ crew: { name: { contains: search } } })
-      }
-      where.OR = searchConditions
+    const parsed = reportQuerySchema.safeParse(Object.fromEntries(searchParams))
+    if (!parsed.success) {
+      return NextResponse.json({ error: firstZodMessage(parsed.error) }, { status: 400 })
     }
 
-    // Date range filter on tanggal (same pattern as claims/export routes)
-    if (dateFrom || dateTo) {
-      const tanggalFilter: Record<string, unknown> = {}
-      if (dateFrom) tanggalFilter.gte = dateFrom
-      if (dateTo) {
-        // Calculate next day to include all timestamps on dateTo
-        const [y, m, d] = dateTo.split('-').map(Number)
-        const nextDay = new Date(y, m - 1, d + 1)
-        const nextDayStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`
-        tanggalFilter.lt = nextDayStr
-      }
-      where.tanggal = tanggalFilter
+    const result = await getReportData(parsed.data)
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
     }
-
-    // Fetch crew info if crewId is specified
-    let crewInfo: { id: string; name: string; groupName: string } | null = null
-    if (crewId) {
-      const crew = await db.crew.findUnique({
-        where: { id: crewId },
-        select: {
-          id: true,
-          name: true,
-          group: { select: { name: true } },
-        },
-      })
-      if (crew) {
-        crewInfo = {
-          id: crew.id,
-          name: crew.name,
-          groupName: crew.group?.name || '',
-        }
-      }
-    }
-
-    const [sales, total, summary, strukGroups] = await Promise.all([
-      db.sale.findMany({
-        where,
-        include: {
-          crew: {
-            select: {
-              id: true,
-              name: true,
-              employeeId: true,
-              photo: true,
-              group: { select: { id: true, name: true } },
-            },
-          },
-        },
-        orderBy: [
-          { tanggal: 'desc' },
-          { createdAt: 'desc' },
-        ],
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      db.sale.count({ where }),
-      db.sale.aggregate({
-        _sum: { qty: true, settle: true },
-        where,
-      }),
-      db.sale.groupBy({
-        by: ['idPenjualan'],
-        where: { ...where, idPenjualan: { not: null } },
-      }),
-    ])
-
-    const totalPages = Math.max(1, Math.ceil(total / limit))
-
-    // Calculate summary stats
-    const totalQty = summary._sum.qty ?? 0
-    const totalSettle = summary._sum.settle ?? 0
-    const totalStruk = strukGroups.length
-    const basketSize = totalStruk > 0 ? totalQty / totalStruk : 0
-    const pricePoint = totalQty > 0 ? totalSettle / totalQty : 0
-
-    return NextResponse.json({
-      sales,
-      total,
-      totalPages,
-      page,
-      summary: {
-        totalQty,
-        totalSettle,
-        totalStruk,
-        basketSize,
-        pricePoint,
-      },
-      crewInfo,
-    })
+    return NextResponse.json(result.data)
   } catch (error) {
     console.error('Management report error:', error)
     return NextResponse.json({ error: 'Terjadi kesalahan saat memuat laporan' }, { status: 500 })
