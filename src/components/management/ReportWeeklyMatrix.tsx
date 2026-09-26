@@ -8,8 +8,15 @@
 //                     + TOTAL + baris TOTAL ZONING.
 //   Tabel 2 (DEPT)  : grid tabel per crew per minggu → DEPT | QTY | NETTO.
 //
+// Ekstra (fitur pembaruan export):
+//   • Tombol "Export Excel" — workbook XLSX 3 sheet (All Data /
+//     Laporan Zoning-Grup / Laporan Per Dept) via exportBase.
+//   • requireZoning — mode halaman publik: data TIDAK diambil sebelum
+//     user memilih zoning (dropdown sumber dari zoningOptions).
+//
 // Read/query layer murni — data dari
-// /api/management/report/weekly-matrix (penjualan terklaim + engine target).
+// /api/management/report/weekly-matrix (admin) atau
+// /api/public/report/weekly-matrix (publik).
 // ─────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
@@ -23,8 +30,9 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { FileBarChart, RefreshCw, AlertTriangle, CalendarDays, Layers } from 'lucide-react'
+import { FileBarChart, RefreshCw, AlertTriangle, CalendarDays, Layers, FileSpreadsheet, Loader2 } from 'lucide-react'
 import { fmtNum, monthNames, getWIBToday, safeFetch, fadeIn } from '@/lib/cms-utils'
+import { toast } from 'sonner'
 import { motion } from 'framer-motion'
 
 // ─── Types (sesuai response API weekly-matrix) ───────────
@@ -75,9 +83,23 @@ interface ReportWeeklyMatrixProps {
   /** Base URL API weekly-matrix — default '/api/management/report/weekly-matrix' (admin).
    *  Halaman Laporan publik memakai '/api/public/report/weekly-matrix'. */
   apiBase?: string
+  /** Base URL export workbook XLSX multi-sheet (All Data / Laporan
+   *  Zoning-Grup / Laporan Per Dept). Kosong = tombol export disembunyikan. */
+  exportBase?: string
+  /** Mode halaman publik: WAJIB pilih zoning dulu — data tidak diambil
+   *  sebelum zoning dipilih (tidak ada opsi "Semua Zoning"). */
+  requireZoning?: boolean
+  /** Opsi zoning untuk dropdown (dari /api/public/report/meta).
+   *  Bila kosong, opsi diambil dari data matrix yang sudah dimuat. */
+  zoningOptions?: Array<{ id: string; name: string }>
 }
 
-const ReportWeeklyMatrix = React.memo(function ReportWeeklyMatrix({ apiBase = '/api/management/report/weekly-matrix' }: ReportWeeklyMatrixProps = {}) {
+const ReportWeeklyMatrix = React.memo(function ReportWeeklyMatrix({
+  apiBase = '/api/management/report/weekly-matrix',
+  exportBase = '',
+  requireZoning = false,
+  zoningOptions,
+}: ReportWeeklyMatrixProps = {}) {
   const today = getWIBToday() // yyyy-mm-dd (WIB)
 
   // ─── Filter state (auto-fetch saat berubah) ───
@@ -87,15 +109,25 @@ const ReportWeeklyMatrix = React.memo(function ReportWeeklyMatrix({ apiBase = '/
 
   // ─── Data state ───
   const [data, setData] = useState<MatrixData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!requireZoning)
   const [error, setError] = useState<string | null>(null)
 
   // ─── Filter tabel dept ───
   const [deptCrewId, setDeptCrewId] = useState('') // '' = semua crew
   const [deptWeek, setDeptWeek] = useState(0) // 0 = semua minggu
 
+  // ─── Export state ───
+  const [exporting, setExporting] = useState(false)
+
   // ─── Fetch ───
   const fetchData = useCallback(async () => {
+    if (requireZoning && !groupId) {
+      // Mode publik: zoning wajib dipilih dulu — jangan fetch
+      setData(null)
+      setError(null)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -122,11 +154,58 @@ const ReportWeeklyMatrix = React.memo(function ReportWeeklyMatrix({ apiBase = '/
     } finally {
       setLoading(false)
     }
-  }, [apiBase, groupId, month, year])
+  }, [apiBase, groupId, month, year, requireZoning])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // ─── Export workbook XLSX 3 sheet (All Data / Zoning-Grup / Per Dept) ───
+  const handleExport = useCallback(async () => {
+    if (!exportBase) return
+    setExporting(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('scope', groupId ? 'zoning' : 'all')
+      if (groupId) params.set('groupId', groupId)
+      if (deptCrewId) params.set('crewId', deptCrewId) // filter crew All Data (opsional)
+      params.set('month', String(month))
+      params.set('year', String(year))
+      params.set('claimedOnly', '1')
+      params.set('format', 'xlsx')
+      const res = await safeFetch(`${exportBase}?${params.toString()}`, {}, 120_000)
+      if (!res.ok) {
+        let msg = 'Gagal mengekspor data'
+        try {
+          const d = await res.json()
+          if (d?.error) msg = d.error
+        } catch { /* ignore */ }
+        toast.error(msg)
+        return
+      }
+      const blob = await res.blob()
+      const totalRows = res.headers.get('X-Total-Rows')
+      const cd = res.headers.get('Content-Disposition') || ''
+      const filename = cd.match(/filename="?([^"]+)"?/)?.[1] || `laporan-${month}-${year}.xlsx`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast.success(
+        totalRows
+          ? `Export Excel berhasil — ${fmtNum(parseInt(totalRows, 10))} transaksi (3 sheet)`
+          : 'Export Excel berhasil (3 sheet)',
+      )
+    } catch {
+      toast.error('Gagal mengekspor data')
+    } finally {
+      setExporting(false)
+    }
+  }, [exportBase, groupId, deptCrewId, month, year])
 
   // Reset filter dept saat scope bulan/zoning berubah
   useEffect(() => {
@@ -139,6 +218,12 @@ const ReportWeeklyMatrix = React.memo(function ReportWeeklyMatrix({ apiBase = '/
     for (let y = year + 1; y >= year - 3; y--) list.push(y)
     return list
   }, [year])
+
+  // Opsi dropdown zoning: dari props (meta publik) atau dari data matrix
+  const zoningList = useMemo(() => {
+    if (zoningOptions && zoningOptions.length > 0) return zoningOptions
+    return (data?.groups ?? []).map((g) => ({ id: g.groupId, name: g.groupName }))
+  }, [zoningOptions, data])
 
   // Opsi crew untuk filter tabel dept (dari data aktif)
   const deptCrewOptions = useMemo(() => {
@@ -196,23 +281,46 @@ const ReportWeeklyMatrix = React.memo(function ReportWeeklyMatrix({ apiBase = '/
                 </p>
               </div>
             </div>
-            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={fetchData} aria-label="Refresh laporan mingguan">
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              {exportBase && (
+                <Button
+                  size="sm"
+                  className="h-9 text-xs bg-[#E14227] hover:bg-[#C93617] text-white"
+                  disabled={exporting || loading || (requireZoning && !groupId)}
+                  onClick={handleExport}
+                  title={requireZoning && !groupId ? 'Pilih zoning terlebih dahulu' : 'Export Excel 3 sheet: All Data, Laporan Zoning-Grup, Laporan Per Dept'}
+                >
+                  {exporting ? (
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+                  )}
+                  Export Excel
+                </Button>
+              )}
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={fetchData} aria-label="Refresh laporan mingguan">
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             {/* Zoning */}
             <div>
-              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1">Zoning / Group</label>
-              <Select value={groupId || '__all__'} onValueChange={(v) => setGroupId(v === '__all__' ? '' : v)}>
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
+                Zoning / Group {requireZoning && <span className="text-[#E14227]">(wajib)</span>}
+              </label>
+              <Select
+                value={groupId || (requireZoning ? '' : '__all__')}
+                onValueChange={(v) => setGroupId(v === '__all__' ? '' : v)}
+              >
                 <SelectTrigger className="h-10 w-full" aria-label="Pilih zoning">
-                  <SelectValue placeholder="Semua Zoning" />
+                  <SelectValue placeholder={requireZoning ? 'Pilih Zoning…' : 'Semua Zoning'} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">Semua Zoning</SelectItem>
-                  {(data?.groups ?? []).map(g => (
-                    <SelectItem key={g.groupId} value={g.groupId}>{g.groupName}</SelectItem>
+                  {!requireZoning && <SelectItem value="__all__">Semua Zoning</SelectItem>}
+                  {zoningList.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -264,6 +372,24 @@ const ReportWeeklyMatrix = React.memo(function ReportWeeklyMatrix({ apiBase = '/
           </div>
         </CardContent>
       </Card>
+
+      {/* ═══ PROMPT WAJIB PILIH ZONING (mode publik) ═══ */}
+      {!loading && !error && requireZoning && !groupId && (
+        <Card className="glass-stat border-border/40 border-dashed">
+          <CardContent className="p-10 text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-[#E14227]/10 flex items-center justify-center mx-auto">
+              <Layers className="w-6 h-6 text-[#E14227]" />
+            </div>
+            <div>
+              <p className="text-sm font-bold">Pilih Zoning terlebih dahulu</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Laporan Mingguan per Zoning &amp; Detail Dept per Crew per Minggu akan
+                tampil setelah zoning dipilih. Filter crew bersifat opsional.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ═══ LOADING / ERROR / EMPTY ═══ */}
       {loading && (

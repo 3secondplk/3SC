@@ -292,7 +292,7 @@ const ManagementReport = React.memo(function ManagementReport({
     setApplied((a) => ({ ...a, dateFrom: from, dateTo: to }))
   }, [])
 
-  // ─── Export CSV — dropdown scope, streaming server-side ───
+  // ─── Export workbook XLSX 3 sheet — dropdown scope, server-side ───
   const handleExport = useCallback(
     async (scope: 'zoning' | 'crew' | 'all') => {
       setExporting(scope)
@@ -300,6 +300,7 @@ const ManagementReport = React.memo(function ManagementReport({
         const params = new URLSearchParams()
         params.set('scope', scope)
         params.set('claimedOnly', '1') // semantik Report: hanya penjualan ber-claim
+        params.set('format', 'xlsx') // workbook multi-sheet (All Data / Zoning-Grup / Per Dept)
         if (applied.groupId) params.set('groupId', applied.groupId)
         if (applied.crewId) params.set('crewId', applied.crewId)
         if (applied.dateFrom) params.set('dateFrom', applied.dateFrom)
@@ -317,7 +318,7 @@ const ManagementReport = React.memo(function ManagementReport({
         const blob = await res.blob()
         const totalRows = res.headers.get('X-Total-Rows')
         const cd = res.headers.get('Content-Disposition') || ''
-        const filename = cd.match(/filename="?([^"]+)"?/)?.[1] || 'laporan-export.csv'
+        const filename = cd.match(/filename="?([^"]+)"?/)?.[1] || 'laporan-export.xlsx'
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url

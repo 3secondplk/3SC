@@ -3,13 +3,20 @@ import { db } from '@/lib/db'
 import { requireAuth, unauthorized } from '@/lib/auth'
 import { exportQuerySchema, firstZodMessage } from '@/lib/report-schemas'
 import { rateLimit, rateLimitKey } from '@/lib/rate-limit'
-import { salesExportResponse } from '@/lib/report-export'
+import { salesExportResponse, reportWorkbookResponse } from '@/lib/report-export'
 
 // ─────────────────────────────────────────────────────────────
-// GET /api/export — CSV export (server-side STREAMING, chunked)
-// (ADMIN — dilindungi auth; logika streaming ada di
-//  src/lib/report-export.ts agar identik dengan endpoint publik
-//  /api/public/report/export)
+// GET /api/export — export laporan (ADMIN — dilindungi auth)
+//
+// Tiga bentuk output:
+//   • format=summary        → ringkasan teks legacy (dipakai ExportTab)
+//   • format=xlsx           → workbook Excel MULTI-SHEET (All Data +
+//                             Laporan Zoning-Grup + Laporan Per Dept);
+//                             logika di src/lib/report-export.ts,
+//                             identik dengan endpoint publik
+//   • lainnya (default)     → CSV streaming (logika bersama di
+//                             src/lib/report-export.ts, identik dengan
+//                             /api/public/report/export)
 //
 // SCOPE (dropdown Export Data di Report):
 //   scope=zoning → wajib groupId → export 1 zoning (semua crew-nya)
@@ -21,8 +28,6 @@ import { salesExportResponse } from '@/lib/report-export'
 // claimedOnly=1 → semantik Report (hanya penjualan yang sudah
 // diklaim crew). Caller legacy tanpa param ini tetap mendapat
 // seluruh penjualan (perilaku lama dipertahankan).
-//
-// format=summary → mode legacy ringkasan teks (dipakai ExportTab).
 // ─────────────────────────────────────────────────────────────
 
 /** Format a number as Rp currency string */
@@ -52,6 +57,11 @@ export async function GET(request: NextRequest) {
     }
 
     const q = parsed.data
+
+    // ─── Workbook XLSX multi-sheet (fitur pembaruan export) ──────
+    if (q.format === 'xlsx') {
+      return await reportWorkbookResponse(q)
+    }
 
     // ─── Summary format (legacy, tidak berubah) ──────────────────
     if (q.format === 'summary') {

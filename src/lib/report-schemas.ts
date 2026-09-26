@@ -53,6 +53,11 @@ export const exportQuerySchema = z
     claimedOnly: z.enum(['0', '1']).optional().default('0'),
     format: z.string().max(20).optional().default(''),
     filename: z.string().trim().max(120).optional().default(''),
+    // month/year → konteks laporan mingguan utk workbook XLSX multi-sheet
+    // (sheet "Laporan Zoning-Grup" & "Laporan Per Dept"). Bila kosong,
+    // diambil dari bulan dateFrom, atau bulan WIB berjalan.
+    month: z.coerce.number().int().min(1).max(12).optional(),
+    year: z.coerce.number().int().min(2000).max(2100).optional(),
   })
   .refine((d) => !d.dateFrom || !d.dateTo || d.dateFrom <= d.dateTo, {
     message: 'Tanggal "Dari" tidak boleh lebih besar dari tanggal "Sampai"',

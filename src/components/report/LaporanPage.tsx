@@ -3,22 +3,23 @@
 // ─────────────────────────────────────────────────────────
 // LaporanPage — HALAMAN LAPORAN SENDIRI (top-level tab, AKSES PUBLIK)
 //
-// Sebelumnya laporan tersembunyi sebagai sub-tab Management dan hanya
-// untuk admin. Sekarang menjadi halaman mandiri yang bisa dibuka siapa
-// saja TANPA login:
+// Halaman mandiri yang bisa dibuka siapa saja TANPA login. Sesuai
+// pembaruan tampilan, halaman ini cukup menampilkan:
 //
-//   • Filter Zoning → Crew (cascade) + rentang tanggal + pencarian
-//   • Summary: Total Settle / Qty / Struk / Basket Size / Price Point
-//   • Breakdown per Zoning & per Crew
-//   • Tabel Laporan Penjualan (penjualan terklaim, paginated)
-//   • Export CSV streaming (Zoning / Crew / Semua) — endpoint publik
-//   • Laporan Mingguan format sheet toko (Weekly Matrix)
+//   1. Laporan Mingguan per Zoning (matrix crew × Week 1–5 ACV)
+//   2. Detail Dept per Crew per Minggu
+//
+// Aturan tampil (pembaruan):
+//   • Data TIDAK dimuat semuanya sekaligus — user WAJIB memilih
+//     Zoning terlebih dahulu (requireZoning), baru laporan tampil.
+//   • Filter crew bersifat OPSIONAL (bisa difilter per crew).
+//   • Export Excel multi-sheet (All Data / Laporan Zoning-Grup /
+//     Laporan Per Dept) via tombol "Export Excel".
 //
 // Sumber data (semua PUBLIK, read-only, rate-limit per IP):
-//   GET /api/public/report/meta            — daftar zoning & crew
-//   GET /api/public/report                 — data laporan utama
+//   GET /api/public/report/meta            — daftar zoning (opsi filter)
 //   GET /api/public/report/weekly-matrix   — laporan mingguan
-//   GET /api/public/report/export          — export CSV (claimedOnly dipaksa 1)
+//   GET /api/public/report/export          — export XLSX 3 sheet (claimedOnly dipaksa 1)
 //
 // Data sensitif (penjualan belum diklaim, target internal admin,
 // migrasi data, log aktivitas) TETAP hanya bisa diakses admin.
@@ -34,8 +35,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FileBarChart, Globe, AlertTriangle, RefreshCw } from 'lucide-react'
 import { safeFetch, fadeIn, stagger } from '@/lib/cms-utils'
-import type { Crew, Group } from '@/lib/cms-types'
-import ManagementReport from '@/components/management/ManagementReport'
+import type { Group } from '@/lib/cms-types'
 import ReportWeeklyMatrix from '@/components/management/ReportWeeklyMatrix'
 
 interface PublicMeta {
@@ -47,9 +47,8 @@ const LaporanPage = React.memo(function LaporanPage() {
   const [metaLoading, setMetaLoading] = useState(true)
   const [metaError, setMetaError] = useState<string | null>(null)
   const [groups, setGroups] = useState<Group[]>([])
-  const [crews, setCrews] = useState<Crew[]>([])
 
-  // ─── Fetch daftar zoning + crew (publik) ───
+  // ─── Fetch daftar zoning (publik) — opsi dropdown wajib pilih zoning ───
   const fetchMeta = useCallback(async () => {
     setMetaLoading(true)
     setMetaError(null)
@@ -65,7 +64,7 @@ const LaporanPage = React.memo(function LaporanPage() {
         return
       }
       const data: PublicMeta = await res.json()
-      // Map ke tipe Crew/Group minimal yang dipakai komponen report
+      // Map ke tipe Group minimal yang dipakai komponen report
       setGroups((data.groups || []).map(g => ({
         id: g.id,
         name: g.name,
@@ -75,18 +74,6 @@ const LaporanPage = React.memo(function LaporanPage() {
         tiktokActive: false,
         crewCount: 0,
         crews: [],
-      })))
-      setCrews((data.crews || []).map(c => ({
-        id: c.id,
-        name: c.name,
-        photo: c.photo,
-        employeeId: c.employeeId,
-        groupId: c.groupId,
-        group: { id: c.groupId, name: '' },
-        totalSales: 0,
-        totalQty: 0,
-        todaySales: 0,
-        transactionCount: 0,
       })))
     } catch {
       setMetaError('Tidak dapat terhubung ke server. Periksa koneksi lalu coba lagi.')
@@ -109,13 +96,13 @@ const LaporanPage = React.memo(function LaporanPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base sm:text-lg font-bold text-white leading-tight">Laporan Penjualan</h2>
+                  <h2 className="text-base sm:text-lg font-bold text-white leading-tight">Laporan Mingguan per Zoning</h2>
                   <Badge className="border-transparent bg-white/20 text-white text-[9px] px-1.5 py-0 gap-1">
                     <Globe className="w-2.5 h-2.5" /> Akses Publik
                   </Badge>
                 </div>
                 <p className="text-[11px] sm:text-xs text-white/80 mt-0.5">
-                  Report by Zoning/Group &amp; Crew — bisa diakses &amp; diekspor tanpa login
+                  Laporan Mingguan per Zoning &amp; Detail Dept per Crew per Minggu — pilih zoning, lalu akses &amp; export tanpa login
                 </p>
               </div>
             </div>
@@ -123,29 +110,18 @@ const LaporanPage = React.memo(function LaporanPage() {
         </Card>
       </motion.div>
 
-      {/* ═══ CONTENT ═══ */}
+      {/* ═══ CONTENT — hanya Laporan Mingguan + Detail Dept ═══ */}
       {metaLoading ? (
         <motion.div {...stagger} className="space-y-5">
           <Card className="border-0 shadow-lg glass-card">
             <CardContent className="p-4 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <Skeleton className="h-10 w-full rounded-lg" />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Skeleton className="h-10 w-full rounded-lg" />
                 <Skeleton className="h-10 w-full rounded-lg" />
                 <Skeleton className="h-10 w-full rounded-lg" />
               </div>
             </CardContent>
           </Card>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            {[1, 2, 3, 4, 5].map(i => (
-              <Card key={i} className="glass-stat">
-                <CardContent className="p-4 space-y-3">
-                  <Skeleton className="h-3 w-20 rounded" />
-                  <Skeleton className="h-7 w-28 rounded" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
           <Card className="border-0 shadow-lg glass-card">
             <CardContent className="p-4">
               <div className="space-y-2">
@@ -184,17 +160,12 @@ const LaporanPage = React.memo(function LaporanPage() {
           </Card>
         </motion.div>
       ) : (
-        <div className="space-y-6">
-          {/* Laporan utama: filter + summary + breakdown + tabel + export (endpoint publik) */}
-          <ManagementReport
-            crews={crews}
-            groups={groups}
-            apiBase="/api/public/report"
-            exportBase="/api/public/report/export"
-          />
-          {/* Laporan mingguan format sheet toko (endpoint publik) */}
-          <ReportWeeklyMatrix apiBase="/api/public/report/weekly-matrix" />
-        </div>
+        <ReportWeeklyMatrix
+          apiBase="/api/public/report/weekly-matrix"
+          exportBase="/api/public/report/export"
+          requireZoning
+          zoningOptions={groups.map(g => ({ id: g.id, name: g.name }))}
+        />
       )}
     </TabsContent>
   )
