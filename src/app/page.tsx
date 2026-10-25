@@ -900,6 +900,9 @@ export default function Home() {
   const handleExport = async () => {
     try {
       const params = new URLSearchParams()
+      // claimedOnly=1 — konsisten dengan export halaman Laporan:
+      // nominal = settle, hanya penjualan yang sudah di-claim crew.
+      params.set('claimedOnly', '1')
       if (claimDateFrom) params.set('dateFrom', claimDateFrom)
       if (claimDateTo) params.set('dateTo', claimDateTo)
       const url = `/api/export${params.toString() ? '?' + params.toString() : ''}`

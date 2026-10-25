@@ -292,15 +292,17 @@ const ManagementReport = React.memo(function ManagementReport({
     setApplied((a) => ({ ...a, dateFrom: from, dateTo: to }))
   }, [])
 
-  // ─── Export workbook XLSX 3 sheet — dropdown scope, server-side ───
+  // ─── Export — dropdown scope, streaming server-side ───
+  // format 'csv' → CSV streaming (semantik Report, claimedOnly=1)
+  // format 'monthly' → XLSX multi-sheet, 1 sheet per bulan
   const handleExport = useCallback(
-    async (scope: 'zoning' | 'crew' | 'all') => {
+    async (scope: 'zoning' | 'crew' | 'all', format: 'csv' | 'monthly' = 'csv') => {
       setExporting(scope)
       try {
         const params = new URLSearchParams()
         params.set('scope', scope)
         params.set('claimedOnly', '1') // semantik Report: hanya penjualan ber-claim
-        params.set('format', 'xlsx') // workbook multi-sheet (All Data / Zoning-Grup / Per Dept)
+        if (format === 'monthly') params.set('format', 'monthly')
         if (applied.groupId) params.set('groupId', applied.groupId)
         if (applied.crewId) params.set('crewId', applied.crewId)
         if (applied.dateFrom) params.set('dateFrom', applied.dateFrom)
@@ -317,8 +319,9 @@ const ManagementReport = React.memo(function ManagementReport({
         }
         const blob = await res.blob()
         const totalRows = res.headers.get('X-Total-Rows')
+        const sheetCount = res.headers.get('X-Sheet-Count')
         const cd = res.headers.get('Content-Disposition') || ''
-        const filename = cd.match(/filename="?([^"]+)"?/)?.[1] || 'laporan-export.xlsx'
+        const filename = cd.match(/filename="?([^"]+)"?/)?.[1] || (format === 'monthly' ? 'laporan-per-bulan.xlsx' : 'laporan-export.csv')
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
@@ -329,7 +332,9 @@ const ManagementReport = React.memo(function ManagementReport({
         URL.revokeObjectURL(url)
         toast.success(
           totalRows
-            ? `Export berhasil — ${fmtNum(parseInt(totalRows, 10))} baris`
+            ? format === 'monthly'
+              ? `Export berhasil — ${fmtNum(parseInt(totalRows, 10))} baris dalam ${sheetCount || '?'} sheet bulanan`
+              : `Export berhasil — ${fmtNum(parseInt(totalRows, 10))} baris`
             : 'Export berhasil',
         )
       } catch {
@@ -689,6 +694,19 @@ const ManagementReport = React.memo(function ManagementReport({
                     <span>Export Semua Data</span>
                     <span className="text-[10px] text-muted-foreground">
                       Semua zoning &amp; crew dalam rentang tanggal
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleExport('all', 'monthly')}
+                  disabled={exporting !== ''}
+                  className="text-xs cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-amber-500" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold">Export Semua Crew (Per Bulan)</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      File Excel — 1 sheet per bulan, semua crew
                     </span>
                   </div>
                 </DropdownMenuItem>

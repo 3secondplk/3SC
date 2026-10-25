@@ -257,18 +257,31 @@ const ExportTab = React.memo(function ExportTab({
   }, [])
 
   // ─── Export CSV ───
+  // KONSISTENSI LAPORAN: export memakai semantik yang sama dengan
+  // halaman Laporan (claimedOnly=1) sehingga total nominal SETTLE
+  // identik dengan export dari Laporan — penjualan belum di-claim
+  // tidak ikut (kolom nominal = settle, bukan netto/hjp).
   const handleExport = useCallback(() => {
     const params = new URLSearchParams()
-    if (effectiveCrewId) params.set('crewId', effectiveCrewId)
+    params.set('claimedOnly', '1')
+    if (selectedGroupId) {
+      params.set('scope', 'zoning')
+      params.set('groupId', selectedGroupId)
+    } else if (effectiveCrewId) {
+      params.set('crewId', effectiveCrewId)
+    }
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
     const qs = params.toString()
     window.open(`/api/export?${qs}`, '_blank')
-  }, [effectiveCrewId, dateFrom, dateTo])
+  }, [selectedGroupId, effectiveCrewId, dateFrom, dateTo])
 
   // ─── Export per crew CSV ───
+  // claimedOnly=1: konsisten dengan export Laporan (nominal settle,
+  // hanya penjualan ber-claim crew).
   const handleExportPerCrew = useCallback((report: CrewReport) => {
     const params = new URLSearchParams()
+    params.set('claimedOnly', '1')
     if (report.crewId !== '__unclaimed__') params.set('crewId', report.crewId)
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
